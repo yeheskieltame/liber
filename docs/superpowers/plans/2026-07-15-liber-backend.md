@@ -1590,6 +1590,26 @@ git commit -m "Wire orders API: create+quote+bridge-build, approve+submit, statu
 
 ---
 
+### Addendum (post-implementation, whole-branch review): webhook correlation was built on the wrong payload shape
+
+Task 11 as originally written (and Task 6's `getTransactionHistory`) assumed the IDRX webhook includes `merchantOrderId`, based on an example from the **mint-via-QRIS** flow. Verified directly against IDRX's docs (`docs.idrx.co/api/callback`, verbatim JSON): the **redeem-from-other-stablecoins** callback — our actual flow — has no `merchantOrderId` at all. Its real shape (confirmed against both the callback docs and the `user-transaction-history` endpoint's `DEPOSIT_REDEEM` response) is:
+
+```json
+{
+  "depositRedeemRequest": {
+    "address": "0x1095bBe769fDab716A823d0f7149CAD713d20A13",
+    "transferTxHash": "0x3e36838c...",
+    "status": "SUCCESS"
+  }
+}
+```
+
+`address` is the IDRX deposit wallet address that received the incoming stablecoin — exactly the value already stored as `users.idrx_deposit_address`. `transferTxHash` can be used to query `GET /api/transaction/user-transaction-history?transferTxHash=...` for the trusted, re-verified record (the query API documents `merchantOrderId | txHash | transferTxHash | burnTxHash` as valid filters — `transferTxHash` works even though `merchantOrderId` doesn't exist for this flow).
+
+**Corrected reconciliation design:** the webhook is still untrusted and still only used as a "check now" trigger — but the lookup key is `transferTxHash` (present in the real payload), and the correlation to an order happens by matching the **trusted API response's** `address` field against `users.idrx_deposit_address`, then picking that user's most recent order in `bridging`/`redeeming` state. `orders.idrx_merchant_order_id` is no longer populated or read (the column can stay in the schema unused rather than forcing a migration right now). This replaces Task 6's `getTransactionHistory(config, merchantOrderId)` with `getRedeemByTransferTxHash(config, transferTxHash)`, and rewrites Task 11's `reconcile()` accordingly (see revised code below).
+
+**Also newly needed:** nothing in production ever drove the `bridging → redeeming` transition (Task 8's `getBridgeStatus` was exported but never called), so a genuinely failed bridge (as opposed to a slow one) had no automatic path to `failed`. Task 15 (new) adds a lightweight poller for this — but note that reaching `completed` no longer depends on it: the IDRX webhook reconciliation above now drives `bridging`/`redeeming` → `completed` directly in one pass, since by the time IDRX confirms a successful redeem, the bridge has trivially already succeeded.
+
 ### Task 11: IDRX webhook + reconciliation
 
 **Files:**
@@ -2123,6 +2143,172 @@ Expected: PASS (all tests, all tasks)
 ```bash
 git add backend/src/routes/history.ts backend/src/app.ts
 git commit -m "Add order history route (closes MVP riwayat transaksi gap)"
+```
+
+---
+
+### Task 15: Fix IDRX correlation (Tasks 6+11) + bridge status poller
+
+**Files:**
+- Modify: `backend/src/idrx/client.ts`, `backend/src/idrx/client.test.ts`
+- Modify: `backend/src/routes/webhooks.ts`, `backend/src/routes/webhooks.test.ts`
+- Create: `backend/src/bridge/poller.ts`, `backend/src/bridge/poller.test.ts`
+- Modify: `backend/src/server.ts`
+
+**Context:** see the Addendum above Task 11 for why this is needed — the webhook shape assumption was wrong, and nothing drove a bridge-failure detection path.
+
+- [ ] **Step 1: Replace `getTransactionHistory` with `getRedeemByTransferTxHash` in `idrx/client.ts`**
+
+Remove the old `getTransactionHistory` function entirely. Add:
+
+```typescript
+export interface RedeemRecord {
+  address: string;
+  status: string;
+  amountFrom: string;
+  transferTxHash: string;
+}
+
+export async function getRedeemByTransferTxHash(
+  config: IdrxConfig,
+  transferTxHash: string
+): Promise<RedeemRecord | null> {
+  const rows = await idrxRequest<Array<{ address: string; status: string; amountFrom: string; transferTxHash: string }>>(
+    config,
+    "GET",
+    `/api/transaction/user-transaction-history?transferTxHash=${encodeURIComponent(transferTxHash)}`
+  );
+  const match = rows.find((r) => r.transferTxHash === transferTxHash);
+  return match ? { address: match.address, status: match.status, amountFrom: match.amountFrom, transferTxHash: match.transferTxHash } : null;
+}
+```
+
+Update `client.test.ts`: remove/replace any test that referenced `getTransactionHistory` with an equivalent for `getRedeemByTransferTxHash` (mocked fetch, asserting the query string uses `transferTxHash` and the response is normalized correctly).
+
+- [ ] **Step 2: Rewrite `webhooks.ts`'s payload handling and `reconcile()`**
+
+```typescript
+// backend/src/routes/webhooks.ts
+import { Hono } from "hono";
+import { getPool } from "../db/pool.js";
+import { getRedeemByTransferTxHash as defaultGetRedeemByTransferTxHash } from "../idrx/client.js";
+import { transition } from "../orders/state-machine.js";
+import { updateOrderState } from "../orders/repository.js";
+
+export interface WebhooksRouteDeps {
+  getRedeemByTransferTxHash: typeof defaultGetRedeemByTransferTxHash;
+  onReconciled?: () => void;
+}
+
+const defaultDeps: WebhooksRouteDeps = { getRedeemByTransferTxHash: defaultGetRedeemByTransferTxHash };
+
+export function createWebhooksRoute(deps: Partial<WebhooksRouteDeps> = {}): Hono {
+  const { getRedeemByTransferTxHash, onReconciled } = { ...defaultDeps, ...deps };
+  const webhooksRoute = new Hono();
+
+  webhooksRoute.post("/webhooks/idrx", async (c) => {
+    const payload = await c.req
+      .json<{ depositRedeemRequest?: { transferTxHash?: string }; txHash?: string }>()
+      .catch(() => ({}) as { depositRedeemRequest?: { transferTxHash?: string }; txHash?: string });
+
+    const transferTxHash = payload.depositRedeemRequest?.transferTxHash ?? payload.txHash;
+    if (transferTxHash) {
+      reconcile(transferTxHash).catch((err) => console.error("reconcile failed", err)).finally(() => onReconciled?.());
+    }
+
+    return c.json({ received: true });
+  });
+
+  async function reconcile(transferTxHash: string): Promise<void> {
+    const businessConfig = {
+      baseUrl: process.env.IDRX_BASE_URL!,
+      apiKey: process.env.IDRX_API_KEY!,
+      apiSecret: process.env.IDRX_API_SECRET!,
+    };
+
+    const record = await getRedeemByTransferTxHash(businessConfig, transferTxHash);
+    if (!record || record.status !== "SUCCESS") return;
+
+    const { rows: userRows } = await getPool().query(`SELECT id FROM users WHERE idrx_deposit_address = $1`, [record.address]);
+    const user = userRows[0];
+    if (!user) return;
+
+    const { rows: orderRows } = await getPool().query(
+      `SELECT id, state FROM orders WHERE user_id = $1 AND state IN ('bridging', 'redeeming') ORDER BY created_at DESC LIMIT 1`,
+      [user.id]
+    );
+    let order = orderRows[0];
+    if (!order) return;
+
+    if (order.state === "bridging") {
+      const redeemingState = transition(order.state, "bridge_confirmed");
+      await updateOrderState(order.id, redeemingState);
+      order = { ...order, state: redeemingState };
+    }
+    if (order.state === "redeeming") {
+      const completedState = transition(order.state, "idrx_redeemed");
+      await updateOrderState(order.id, completedState);
+    }
+  }
+
+  return webhooksRoute;
+}
+
+export const webhooksRoute = createWebhooksRoute();
+```
+
+Update `webhooks.test.ts`: replace `mock.method(idrx, ...)`-style or prior DI mocks targeting `getTransactionHistory` with `createWebhooksRoute({ getRedeemByTransferTxHash: async () => ({...}) })`. Update the untrusted-payload negative test to post `{ depositRedeemRequest: { transferTxHash: "0x...", status: "..." } }` shaped bodies. Keep exercising: (a) a `bridging` order reaches `completed` in one reconcile pass when the trusted record's `address` matches and `status === "SUCCESS"`, (b) the order is untouched when the payload claims success but the trusted API disagrees (still proving "never trust the payload directly" — now via `status`/`address` instead of `adminMintStatus`), (c) no crash when `depositRedeemRequest`/`txHash` is absent.
+
+- [ ] **Step 3: Add the bridge status poller**
+
+```typescript
+// backend/src/bridge/poller.ts
+import { getPool } from "../db/pool.js";
+import { getBridgeStatus as defaultGetBridgeStatus } from "./allbridge.js";
+import { transition } from "../orders/state-machine.js";
+import { updateOrderState } from "../orders/repository.js";
+
+const STALE_THRESHOLD_SECONDS = 300; // 5 minutes — give the bridge normal time before checking for failure
+
+export async function pollBridgingOrders(deps: { getBridgeStatus: typeof defaultGetBridgeStatus } = { getBridgeStatus: defaultGetBridgeStatus }): Promise<void> {
+  const { rows } = await getPool().query(
+    `SELECT id, stellar_tx_hash FROM orders WHERE state = 'bridging' AND stellar_tx_hash IS NOT NULL AND updated_at < now() - interval '${STALE_THRESHOLD_SECONDS} seconds'`
+  );
+
+  for (const order of rows) {
+    const status = await deps.getBridgeStatus(order.stellar_tx_hash);
+    if (status === "failed") {
+      const failedState = transition("bridging", "failure");
+      await updateOrderState(order.id, failedState, { failure_reason: "Bridge transaction failed on-chain" });
+    }
+    // "confirmed"/"pending": leave alone — completion is driven by IDRX webhook reconciliation (Task 11), not this poller.
+  }
+}
+```
+
+Write `poller.test.ts`: insert an order in `bridging` state with `updated_at` forced older than the threshold (`now() - interval '10 minutes'` in the INSERT) and a `stellar_tx_hash`, inject `getBridgeStatus: async () => "failed"`, call `pollBridgingOrders({getBridgeStatus: ...})`, and assert the order's state becomes `failed` with a `failure_reason` set. Add a second case: a fresh (`updated_at` = now) `bridging` order is NOT touched even if `getBridgeStatus` would return `"failed"` — proving the staleness threshold is respected.
+
+- [ ] **Step 4: Wire the poller into `server.ts`**
+
+```typescript
+// backend/src/server.ts (add, don't replace existing content)
+import { pollBridgingOrders } from "./bridge/poller.js";
+
+setInterval(() => {
+  pollBridgingOrders().catch((err) => console.error("bridge poll failed", err));
+}, 60_000);
+```
+
+- [ ] **Step 5: Run the full suite and typecheck**
+
+Run: `DATABASE_URL=postgres://localhost:5432/liber STELLAR_NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015" USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN npm test && npm run typecheck`
+Expected: all tests pass (including the corrected webhook tests and new poller tests), typecheck clean.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/src/idrx/client.ts backend/src/idrx/client.test.ts backend/src/routes/webhooks.ts backend/src/routes/webhooks.test.ts backend/src/bridge/poller.ts backend/src/bridge/poller.test.ts backend/src/server.ts
+git commit -m "Fix IDRX webhook correlation (transferTxHash+address, not merchantOrderId) and add bridge-failure poller"
 ```
 
 ---
