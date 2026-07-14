@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.3.0" },
+  "engines": { "node": ">=20" },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "test": "node --import tsx --experimental-test-module-mocks --test $(find src -name '*.test.ts')",
+    "test": "node --import tsx --test $(find src -name '*.test.ts')",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx src/db/migrate.ts"
   },

@@ -1,52 +1,14 @@
 // backend/src/routes/orders.test.ts
-import { test, mock, before } from "node:test";
+import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { getPool } from "../db/pool.js";
 import { migrate } from "../db/migrate.js";
 import { insertOrder } from "../orders/repository.js";
 import { buildQris } from "../qris/test-helpers.js";
-
-// NOTE on mocking strategy:
-// node:test's `mock.method(namespaceObject, "name", ...)` cannot patch real ES
-// module named exports -- module namespace objects expose their bindings as
-// non-configurable properties, so the `Object.defineProperty` call inside
-// `mock.method` throws "Cannot redefine property". Verified directly against
-// this repo's Node 25 + tsx ESM setup before writing this file.
-//
-// The working equivalent is `mock.module()` (node:test's dedicated ESM
-// module-mocking API, enabled by --experimental-test-module-mocks in
-// package.json's test script), paired with long-lived `mock.fn()` instances
-// so each test can still reprogram behavior and inspect calls the way
-// `mock.method` would normally allow.
-//
-// A module's imports are resolved once, at first evaluation, and are never
-// re-linked -- so the mocks below must be registered *before* the first
-// (dynamic) import of app.js. Every test in this file shares that one App
-// instance and just reprograms the mock.fn()s per case.
-type GetQuoteFn = typeof import("../quote/quote.js")["getQuote"];
-type BuildBridgeTxFn = typeof import("../bridge/allbridge.js")["buildBridgeTx"];
-type SubmitBridgeTxFn = typeof import("../bridge/allbridge.js")["submitBridgeTx"];
-type CreateAppFn = typeof import("../app.js")["createApp"];
-
-const getQuoteMock = mock.fn<GetQuoteFn>(async () => {
-  throw new Error("getQuote not stubbed for this test");
-});
-const buildBridgeTxMock = mock.fn<BuildBridgeTxFn>(async () => {
-  throw new Error("buildBridgeTx not stubbed for this test");
-});
-const submitBridgeTxMock = mock.fn<SubmitBridgeTxFn>(async () => {
-  throw new Error("submitBridgeTx not stubbed for this test");
-});
-
-let createApp: CreateAppFn;
+import { createOrdersRoute } from "./orders.js";
 
 before(async () => {
   await migrate();
-  mock.module("../quote/quote.js", { namedExports: { getQuote: getQuoteMock } });
-  mock.module("../bridge/allbridge.js", {
-    namedExports: { buildBridgeTx: buildBridgeTxMock, submitBridgeTx: submitBridgeTxMock },
-  });
-  ({ createApp } = await import("../app.js"));
 });
 
 async function insertTestUser(provider = "other"): Promise<string> {
@@ -61,12 +23,14 @@ async function insertTestUser(provider = "other"): Promise<string> {
 test("POST /orders parses QRIS, quotes it, and returns an unsigned bridge XDR", async () => {
   const userId = await insertTestUser();
 
-  getQuoteMock.mock.mockImplementation(async () => ({
-    amountUsdc: "2.02",
-    rateIdrPerUsdc: "16000",
-    expiresAt: new Date(Date.now() + 30_000),
-  }));
-  buildBridgeTxMock.mock.mockImplementation(async () => ({ unsignedXdr: "FAKE_UNSIGNED_XDR" }));
+  const app = createOrdersRoute({
+    getQuote: async () => ({
+      amountUsdc: "2.02",
+      rateIdrPerUsdc: "16000",
+      expiresAt: new Date(Date.now() + 30_000),
+    }),
+    buildBridgeTx: async () => ({ unsignedXdr: "FAKE_UNSIGNED_XDR" }),
+  });
 
   const qrContent = buildQris([
     ["00", "01"],
@@ -78,7 +42,6 @@ test("POST /orders parses QRIS, quotes it, and returns an unsigned bridge XDR", 
     ["60", "Jakarta"],
   ]);
 
-  const app = createApp();
   const res = await app.request("/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,7 +60,7 @@ test("POST /orders parses QRIS, quotes it, and returns an unsigned bridge XDR", 
 });
 
 test("POST /orders returns 404 when the user does not exist", async () => {
-  const app = createApp();
+  const app = createOrdersRoute();
   const res = await app.request("/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -122,7 +85,7 @@ test("POST /orders returns 400 for static QRIS without an amountIdr query param"
     ["60", "Jakarta"],
   ]);
 
-  const app = createApp();
+  const app = createOrdersRoute();
   const res = await app.request("/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -145,9 +108,10 @@ test("POST /orders/:id/approve submits the signed XDR and transitions to bridgin
     fromAccountAddress: "GFROMACCOUNT...",
   });
 
-  submitBridgeTxMock.mock.mockImplementation(async () => ({ hash: "FAKE_STELLAR_TX_HASH" }));
+  const app = createOrdersRoute({
+    submitBridgeTx: async () => ({ hash: "FAKE_STELLAR_TX_HASH" }),
+  });
 
-  const app = createApp();
   const res = await app.request(`/orders/${order.id}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -178,11 +142,12 @@ test("POST /orders/:id/approve surfaces bridge submission failures as a 502 and 
     fromAccountAddress: "GFROMACCOUNT...",
   });
 
-  submitBridgeTxMock.mock.mockImplementation(async () => {
-    throw new Error("bridge rejected the transaction");
+  const app = createOrdersRoute({
+    submitBridgeTx: async () => {
+      throw new Error("bridge rejected the transaction");
+    },
   });
 
-  const app = createApp();
   const res = await app.request(`/orders/${order.id}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -200,7 +165,7 @@ test("POST /orders/:id/approve surfaces bridge submission failures as a 502 and 
 });
 
 test("POST /orders/:id/approve returns 404 for an unknown order", async () => {
-  const app = createApp();
+  const app = createOrdersRoute();
   const res = await app.request("/orders/00000000-0000-0000-0000-000000000000/approve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -231,7 +196,7 @@ test("GET /orders/:id returns order status plus e-wallet handoff for the owner's
     fromAccountAddress: "GFROMACCOUNT...",
   });
 
-  const app = createApp();
+  const app = createOrdersRoute();
   const res = await app.request(`/orders/${order.id}`);
 
   assert.equal(res.status, 200);
@@ -246,7 +211,7 @@ test("GET /orders/:id returns order status plus e-wallet handoff for the owner's
 });
 
 test("GET /orders/:id returns 404 for an unknown order", async () => {
-  const app = createApp();
+  const app = createOrdersRoute();
   const res = await app.request("/orders/00000000-0000-0000-0000-000000000000");
   assert.equal(res.status, 404);
 });
