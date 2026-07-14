@@ -1,0 +1,28 @@
+{
+  "name": "liber-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@allbridge/bridge-core-sdk": "^3.32.0",
+    "@hono/node-server": "^1.13.0",
+    "@stellar/stellar-sdk": "^13.0.0",
+    "big.js": "^6.2.1",
+    "hono": "^4.6.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/big.js": "^6.2.2",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
