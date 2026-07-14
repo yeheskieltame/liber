@@ -24,14 +24,25 @@ export async function insertOrder(params: {
   merchantCity: string;
   amountIdr: string;
   amountUsdc: string;
+  rateIdrPerUsdc: string;
   quoteExpiresAt: Date;
   fromAccountAddress: string;
 }): Promise<OrderRow> {
   const { rows } = await getPool().query<OrderRow>(
     `INSERT INTO orders (user_id, qr_content, merchant_name, merchant_city, amount_idr, amount_usdc, quote_rate, quote_expires_at, from_account_address, state)
-     VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, 'quoted')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'quoted')
      RETURNING *`,
-    [params.userId, params.qrContent, params.merchantName, params.merchantCity, params.amountIdr, params.amountUsdc, params.quoteExpiresAt, params.fromAccountAddress]
+    [
+      params.userId,
+      params.qrContent,
+      params.merchantName,
+      params.merchantCity,
+      params.amountIdr,
+      params.amountUsdc,
+      params.rateIdrPerUsdc,
+      params.quoteExpiresAt,
+      params.fromAccountAddress,
+    ]
   );
   return rows[0];
 }

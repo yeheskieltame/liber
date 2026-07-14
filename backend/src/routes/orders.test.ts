@@ -119,6 +119,28 @@ test("POST /orders returns 400 for static QRIS without an amountIdr query param"
   assert.equal(res.status, 400);
 });
 
+test("POST /orders returns 400 for a non-numeric amountIdr query param", async () => {
+  const userId = await insertTestUser();
+
+  const qrContent = buildQris([
+    ["00", "01"],
+    ["01", "11"],
+    ["53", "360"],
+    ["58", "ID"],
+    ["59", "Warung Kopi Asa"],
+    ["60", "Jakarta"],
+  ]);
+
+  const app = createOrdersRoute();
+  const res = await app.request("/orders?amountIdr=abc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, qrContent }),
+  });
+
+  assert.equal(res.status, 400);
+});
+
 test("POST /orders/:id/approve submits the signed XDR and transitions to bridging", async () => {
   const userId = await insertTestUser();
   const order = await insertOrder({
@@ -128,6 +150,7 @@ test("POST /orders/:id/approve submits the signed XDR and transitions to bridgin
     merchantCity: "Jakarta",
     amountIdr: "32000",
     amountUsdc: "2.02",
+    rateIdrPerUsdc: "16000",
     quoteExpiresAt: new Date(Date.now() + 30_000),
     fromAccountAddress: "GFROMACCOUNT...",
   });
@@ -162,6 +185,7 @@ test("POST /orders/:id/approve surfaces bridge submission failures as a 502 and 
     merchantCity: "Jakarta",
     amountIdr: "32000",
     amountUsdc: "2.02",
+    rateIdrPerUsdc: "16000",
     quoteExpiresAt: new Date(Date.now() + 30_000),
     fromAccountAddress: "GFROMACCOUNT...",
   });
@@ -239,6 +263,7 @@ test("GET /orders/:id returns order status plus e-wallet handoff for the owner's
     merchantCity: "Jakarta",
     amountIdr: "32000",
     amountUsdc: "2.02",
+    rateIdrPerUsdc: "16000",
     quoteExpiresAt: new Date(Date.now() + 30_000),
     fromAccountAddress: "GFROMACCOUNT...",
   });

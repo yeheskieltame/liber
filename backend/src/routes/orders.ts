@@ -36,6 +36,9 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
       return c.json({ error: "static QRIS requires amountIdr query param" }, 400);
     }
     const amountIdr = Number(parsed.amount ?? c.req.query("amountIdr"));
+    if (!Number.isFinite(amountIdr) || amountIdr <= 0) {
+      return c.json({ error: "amountIdr must be a positive number" }, 400);
+    }
 
     const quote = await getQuote(amountIdr);
     const order = await insertOrder({
@@ -45,6 +48,7 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
       merchantCity: parsed.merchantCity,
       amountIdr: amountIdr.toString(),
       amountUsdc: quote.amountUsdc,
+      rateIdrPerUsdc: quote.rateIdrPerUsdc,
       quoteExpiresAt: quote.expiresAt,
       fromAccountAddress: user.stellar_public_key,
     });

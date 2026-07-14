@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Account, Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Account, Keypair, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import { buildOnboardingTxFromAccount, buildTrustlineTxFromAccount } from "./account.js";
 
 test("buildOnboardingTxFromAccount produces a signed createAccount operation with the right starting balance", () => {
@@ -16,7 +16,7 @@ test("buildOnboardingTxFromAccount produces a signed createAccount operation wit
   assert.equal(op.type, "createAccount");
   assert.equal((op as any).destination, newAccount.publicKey());
   assert.equal((op as any).startingBalance, "1.5000000");
-  assert.equal(tx.source, funding.publicKey());
+  assert.equal((tx as Transaction).source, funding.publicKey());
   assert.equal(tx.signatures.length, 1);
 });
 
