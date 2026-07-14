@@ -1,7 +1,7 @@
 # Liber — Architecture Design
 
 **Date:** 2026-07-15
-**Status:** Approved for planning
+**Status:** Approved for planning — amended same-day, see §10 Addendum
 **Supersedes:** mechanism described in `LIBER-CONCEPT.md` section 3 (see "Why this differs" below)
 **Related docs:** `LIBER-CONCEPT.md`, `RESEARCH-QRIS-RAILS.md`, `BRIDGE-PATHS.md`
 
@@ -102,3 +102,28 @@ Tidak ada CI/CD pipeline baru untuk MVP. Deploy manual per komponen (`vercel dep
 ## 9. Out of scope (tetap sesuai LIBER-CONCEPT.md)
 
 PPOB, transfer bank/nomor HP, yield/tabungan, multi-chain deposit selain jalur bridge ini, treasury/float model (ditolak demi non-custodial), CI/CD pipeline, custom Soroban contract di luar wallet factory.
+
+## 10. Addendum (2026-07-15, sore) — temuan riset teknis konkret
+
+Setelah §1-9 disetujui, riset API konkret (source code Passkey Kit, Allbridge Core SDK, docs.idrx.co) menemukan beberapa fakta yang mengubah detail eksekusi. Ini bukan perubahan tujuan/goal, tapi koreksi teknis wajib sebelum implementasi:
+
+1. **Passkey Kit ditunda untuk v1.** Smart-wallet contract Passkey Kit **belum di-deploy ke Stellar mainnet** (manifest resmi per 2026-07-13: "Mainnet: Not deployed"). Sementara Allbridge Core SDK **tidak punya rute testnet** untuk pair Stellar↔Base (cuma `mainnet` config yang ada; satu-satunya chain dengan testnet env di SDK itu Sui). Karena bridge+IDRX cuma bisa mainnet dan passkey wallet cuma ada testnet, keduanya tidak bisa dirangkai jadi satu alur hari ini.
+
+   **Keputusan (dikonfirmasi user):** v1 pakai **plain Stellar Ed25519 keypair** sebagai wallet, digenerate di sisi frontend (browser, `@stellar/stellar-sdk` `Keypair.random()`), private key disimpan di IndexedDB browser (bukan di backend — backend tidak pernah melihat private key, cuma menerima XDR yang sudah ditandatangani). Ini tetap mempertahankan prinsip "frontend yang sign, backend cuma submit/relay". Passkey Kit jadi **fast-follow**, diintegrasikan begitu mainnet deployment mereka rilis — tidak memblokir MVP. `contracts/` folder untuk v1 cuma berisi catatan/config untuk integrasi susulan ini (lihat `contracts/README.md`), bukan kerja implementasi aktif.
+
+   Konsekuensi: user perlu didanai XLM minimum (base reserve ~1 XLM + trustline reserve USDC ~0.5 XLM) saat onboarding — backend pegang satu funding keypair mainnet untuk ini (operational cost kecil per user baru, bukan custodial risk terhadap dana user).
+
+2. **Tidak perlu Horizon payment stream listener.** Karena di Mode A backend sendiri yang submit transaksi (menerima XDR ter-signed dari frontend, submit ke network, poll hasilnya), tidak ada payment eksternal yang perlu "dideteksi" lewat stream. Cukup submit-and-poll (`Horizon`/Soroban RPC `getTransaction` by hash). Ini menyederhanakan `backend/` — komponen "Horizon payment stream listener" di §5 dihapus dari scope.
+
+3. **Deep-link "buka e-wallet dengan QRIS ter-preload" tidak punya API publik.** Riset deep-link GoPay (`gojek://gopay/merchanttransfer`) cuma berlaku untuk transaksi yang diinisiasi lewat integrasi merchant resmi (Midtrans dkk) dengan reference transaksi dari mereka — bukan mekanisme umum untuk "buka scanner dengan QR string sembarang". Tidak ada e-wallet yang secara terbuka mendukung ini (masuk akal: kalau ada, itu vektor phishing). **Mekanisme deep-link di §7.3 yang tadinya "fallback" sekarang jadi mekanisme utama**: app coba buka e-wallet (best-effort bare deep link, mis. `gojek://gopay`) supaya user gak perlu cari-cari app-nya, TAPI pembayaran aktual tetap lewat re-scan manual QR yang ditampilkan ulang di layar. Tidak ada yang "otomatis ke-preload" — user tetap perlu scan ulang QRIS yang sama dari e-wallet mereka (native, 1 tap ekstra, bukan 0).
+
+4. **IDRX API detail terverifikasi** (untuk referensi implementasi `backend/`):
+   - Base URL: `https://idrx.co` (sandbox belum terkonfirmasi ada — divalidasi ulang begitu KYB approved)
+   - Auth: header `idrx-api-key`, `idrx-api-sig`, `idrx-api-ts`. Signature = HMAC-SHA256(secret didecode dari base64, message = timestamp+method+url+body JSON), hasil di-encode base64url.
+   - Onboarding user: `POST /api/auth/onboarding` (multipart: email, fullname, address, idNumber, idFile) → response berisi `apiKey`/`apiSecret` PER USER (bukan cuma API key bisnis) — dipakai untuk request user itu selanjutnya.
+   - Tambah rekening: `POST /api/auth/add-bank-account` (bankAccountNumber, bankCode) → membuat `DepositWalletAddress.walletAddress` baru.
+   - Daftar rekening: `GET /api/auth/get-bank-accounts`.
+   - Rekonsiliasi: `GET /api/transaction/user-transaction-history?merchantOrderId=...` — **webhook TIDAK bertanda tangan** (untrusted), jadi webhook cuma jadi trigger untuk poll ulang endpoint ini, bukan sumber kebenaran langsung.
+   - Rate untuk quote user-facing **tidak pakai endpoint IDRX rates** (field-nya ambigu tanpa akses API key nyata) — dipilih pakai **CoinGecko public API** (`simple/price?ids=usd-coin&vs_currencies=idr`) + spread, sesuai §5 asli.
+
+Bagian §2, §4, §5 di atas tetap jadi rujukan tujuan/mekanisme utama — bagian ini cuma mengoreksi detail eksekusi teknisnya.
