@@ -60,8 +60,8 @@ export async function submitBridgeTx(
   }
 
   const sent = await sdk.utils.srb.sendTransactionSoroban(signedXdr);
-  if (sent.status === "ERROR") {
-    throw new Error(`Bridge transaction rejected at submission: ${sent.hash} (status: ERROR)`);
+  if (sent.status !== "PENDING" && sent.status !== "DUPLICATE") {
+    throw new Error(`Bridge transaction not accepted at submission: ${sent.hash} (status: ${sent.status})`);
   }
   const confirm = await sdk.utils.srb.confirmTx(sent.hash);
 
