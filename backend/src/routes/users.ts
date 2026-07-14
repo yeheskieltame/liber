@@ -64,32 +64,50 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
       idFile,
     });
 
-    const userConfig = { baseUrl: businessConfig.baseUrl, apiKey: onboarded.apiKey, apiSecret: onboarded.apiSecret };
-    const { depositWalletAddress } = await addBankAccount(userConfig, {
-      bankAccountNumber: body.bankAccountNumber,
-      bankCode: body.bankCode,
-    });
+    // Everything below this point runs after an IDRX identity has already been
+    // created for this user (onboardUser succeeded). There's no IDRX "cancel
+    // onboarding" endpoint, so a failure anywhere in this sequence leaves that
+    // identity orphaned - no local DB row will reference it. We can't undo
+    // that (and, once submitStellarTx below succeeds, can't undo the on-chain
+    // funding either), so the best we can do is fail loudly with enough
+    // context to reconcile manually, instead of letting an unhandled
+    // exception crash the request. Mirrors the try/catch convention used for
+    // submitBridgeTx in orders.ts's /orders/:id/approve handler.
+    try {
+      const userConfig = { baseUrl: businessConfig.baseUrl, apiKey: onboarded.apiKey, apiSecret: onboarded.apiSecret };
+      const { depositWalletAddress } = await addBankAccount(userConfig, {
+        bankAccountNumber: body.bankAccountNumber,
+        bankCode: body.bankCode,
+      });
 
-    const { signedXdr: fundingXdr } = await buildOnboardingTx({
-      fundingSecret: process.env.FUNDING_SECRET_KEY!,
-      newAccountPublicKey: body.stellarPublicKey,
-      startingBalanceXlm: STARTING_BALANCE_XLM,
-    });
-    // The funding tx is signed only by the backend's own funding key (the source
-    // account), so it can be submitted immediately without any user signature.
-    await submitStellarTx(fundingXdr);
+      const { signedXdr: fundingXdr } = await buildOnboardingTx({
+        fundingSecret: process.env.FUNDING_SECRET_KEY!,
+        newAccountPublicKey: body.stellarPublicKey,
+        startingBalanceXlm: STARTING_BALANCE_XLM,
+      });
+      // The funding tx is signed only by the backend's own funding key (the source
+      // account), so it can be submitted immediately without any user signature.
+      await submitStellarTx(fundingXdr);
 
-    const { unsignedXdr: unsignedTrustlineXdr } = await buildTrustlineTx({
-      accountPublicKey: body.stellarPublicKey,
-    });
+      const { unsignedXdr: unsignedTrustlineXdr } = await buildTrustlineTx({
+        accountPublicKey: body.stellarPublicKey,
+      });
 
-    const { rows } = await getPool().query(
-      `INSERT INTO users (stellar_public_key, idrx_user_id, idrx_api_key, idrx_api_secret, idrx_deposit_address, provider)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [body.stellarPublicKey, onboarded.id, onboarded.apiKey, onboarded.apiSecret, depositWalletAddress, body.provider]
-    );
+      const { rows } = await getPool().query(
+        `INSERT INTO users (stellar_public_key, idrx_user_id, idrx_api_key, idrx_api_secret, idrx_deposit_address, provider)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [body.stellarPublicKey, onboarded.id, onboarded.apiKey, onboarded.apiSecret, depositWalletAddress, body.provider]
+      );
 
-    return c.json({ userId: rows[0].id, unsignedTrustlineXdr }, 201);
+      return c.json({ userId: rows[0].id, unsignedTrustlineXdr }, 201);
+    } catch (err) {
+      console.error(
+        `POST /users failed after IDRX onboarding succeeded (idrx user id: ${onboarded.id}). ` +
+          `That IDRX identity is now orphaned - no local DB row references it - and may need manual reconciliation.`,
+        err
+      );
+      return c.json({ error: (err as Error).message }, 502);
+    }
   });
 
   usersRoute.post("/users/:id/confirm-trustline", async (c) => {

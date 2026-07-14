@@ -67,6 +67,47 @@ test("POST /users onboards with IDRX, funds the account, and returns an unsigned
   assert.equal(rows[0].provider, "gopay");
 });
 
+test("POST /users returns a clear error response (not an unhandled crash) when a post-onboarding step throws", async () => {
+  const stellarPublicKey = `GNEWUSER${Math.random().toString(36).slice(2)}`;
+
+  const app = createUsersRoute({
+    onboardUser: async () => ({
+      id: 2022,
+      apiKey: "user-api-key",
+      apiSecret: Buffer.from("user-secret").toString("base64"),
+      fullname: "Test User",
+    }),
+    addBankAccount: async () => ({ depositWalletAddress: "0xDEPOSIT..." }),
+    buildOnboardingTx: async () => {
+      throw new Error("Horizon: could not build funding tx (simulated failure)");
+    },
+  });
+
+  const res = await app.request("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      stellarPublicKey,
+      email: "user@example.com",
+      fullname: "Test User",
+      address: "Jakarta",
+      idNumber: "1234567890",
+      idFileBase64: Buffer.from("fake-image-bytes").toString("base64"),
+      bankAccountNumber: "081234567890",
+      bankCode: "GOPAY",
+      provider: "gopay",
+    }),
+  });
+
+  assert.equal(res.status, 502);
+  const body = await res.json();
+  assert.match(body.error, /simulated failure/);
+
+  const pool = getPool();
+  const { rows } = await pool.query(`SELECT id FROM users WHERE stellar_public_key = $1`, [stellarPublicKey]);
+  assert.equal(rows.length, 0);
+});
+
 test("POST /users/:id/confirm-trustline submits the signed trustline tx and returns ready", async () => {
   const pool = getPool();
   const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
