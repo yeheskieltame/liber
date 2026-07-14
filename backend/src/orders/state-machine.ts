@@ -33,7 +33,11 @@ const TRANSITIONS: Record<OrderState, Partial<Record<OrderEvent, OrderState>>> =
 };
 
 export function transition(current: OrderState, event: OrderEvent): OrderState {
-  const next = TRANSITIONS[current][event];
+  const stateTransitions = TRANSITIONS[current];
+  if (!stateTransitions) {
+    throw new InvalidTransitionError(current, event);
+  }
+  const next = stateTransitions[event];
   if (!next) {
     throw new InvalidTransitionError(current, event);
   }

@@ -23,3 +23,7 @@ test("rejects any transition out of a terminal state", () => {
   assert.throws(() => transition("completed", "user_approved"), InvalidTransitionError);
   assert.throws(() => transition("failed", "user_approved"), InvalidTransitionError);
 });
+
+test("rejects an unrecognized state with InvalidTransitionError (not TypeError)", () => {
+  assert.throws(() => transition("some_unknown_state" as OrderState, "user_approved"), InvalidTransitionError);
+});
