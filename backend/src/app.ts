@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { ordersRoute } from "./routes/orders.js";
 import { webhooksRoute } from "./routes/webhooks.js";
 import { usersRoute } from "./routes/users.js";
+import { balanceRoute } from "./routes/balance.js";
 
 export function createApp() {
   const app = new Hono();
@@ -9,5 +10,6 @@ export function createApp() {
   app.route("/", ordersRoute);
   app.route("/", webhooksRoute);
   app.route("/", usersRoute);
+  app.route("/", balanceRoute);
   return app;
 }
