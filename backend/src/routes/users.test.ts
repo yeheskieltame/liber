@@ -11,6 +11,10 @@ before(async () => {
 
 test("POST /users onboards with IDRX, funds the account, and returns an unsigned trustline tx", async () => {
   const stellarPublicKey = `GNEWUSER${Math.random().toString(36).slice(2)}`;
+  // Randomized: users.idrx_deposit_address has a partial unique index (see
+  // schema.sql); a fixed literal would collide across repeated test runs
+  // against the same persistent test database.
+  const depositWalletAddress = `0xDEPOSIT${Math.random().toString(36).slice(2)}`;
   const submittedXdrs: string[] = [];
 
   const app = createUsersRoute({
@@ -20,7 +24,7 @@ test("POST /users onboards with IDRX, funds the account, and returns an unsigned
       apiSecret: Buffer.from("user-secret").toString("base64"),
       fullname: "Test User",
     }),
-    addBankAccount: async () => ({ depositWalletAddress: "0xDEPOSIT..." }),
+    addBankAccount: async () => ({ depositWalletAddress }),
     buildOnboardingTx: async () => ({ signedXdr: "FAKE_FUNDING_XDR" }),
     buildTrustlineTx: async () => ({ unsignedXdr: "FAKE_TRUSTLINE_XDR" }),
     // The route submits the funding tx synchronously before returning. A real
@@ -63,7 +67,7 @@ test("POST /users onboards with IDRX, funds the account, and returns an unsigned
   assert.equal(rows[0].idrx_user_id, 1011);
   assert.equal(rows[0].idrx_api_key, "user-api-key");
   assert.equal(rows[0].idrx_api_secret, Buffer.from("user-secret").toString("base64"));
-  assert.equal(rows[0].idrx_deposit_address, "0xDEPOSIT...");
+  assert.equal(rows[0].idrx_deposit_address, depositWalletAddress);
   assert.equal(rows[0].provider, "gopay");
 });
 

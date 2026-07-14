@@ -31,6 +31,14 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
     const user = rows[0];
     if (!user) return c.json({ error: "user not found" }, 404);
 
+    const { rows: inFlightRows } = await getPool().query(
+      `SELECT id FROM orders WHERE user_id = $1 AND state NOT IN ('completed', 'failed') LIMIT 1`,
+      [userId]
+    );
+    if (inFlightRows[0]) {
+      return c.json({ error: "an order is already in progress for this user" }, 409);
+    }
+
     const parsed = parseQRIS(qrContent);
     if (!parsed.amount && !c.req.query("amountIdr")) {
       return c.json({ error: "static QRIS requires amountIdr query param" }, 400);

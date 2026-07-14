@@ -110,6 +110,73 @@ test("POST /webhooks/idrx does nothing when the trusted API disagrees with what 
   assert.equal(rows[0].state, "bridging");
 });
 
+test("POST /webhooks/idrx no-ops when the trusted record's address matches no user", async () => {
+  // No user is inserted with this deposit address at all — the correlation
+  // query in reconcile() should simply find no matching user and return,
+  // without crashing or touching any order.
+  const unmatchedAddress = `0xDEPOSIT${Math.random().toString(36).slice(2)}`;
+  const { onReconciled, reconciled } = waitForReconciliation();
+
+  const app = createWebhooksRoute({
+    getRedeemByTransferTxHash: async () => ({
+      address: unmatchedAddress,
+      status: "SUCCESS",
+      amountFrom: "32000",
+      transferTxHash: "0xTRANSFER3",
+    }),
+    onReconciled,
+  });
+
+  const res = await app.request("/webhooks/idrx", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ txHash: "0xTRANSFER3" }),
+  });
+
+  assert.equal(res.status, 200);
+  await reconciled;
+  // Reaching this point without reconcile() throwing is itself the assertion
+  // that matters here — there is no order to check, since no user (and thus
+  // no order) is associated with this address.
+});
+
+test("POST /webhooks/idrx does not touch a different user's in-flight order when the trusted record's address matches someone else", async () => {
+  // userA has an in-flight ("bridging") order. The trusted record's address
+  // matches userB instead (a different user, with no order of their own).
+  // This proves the address->user->order correlation is scoped to the
+  // matched user specifically — it must not fall back to "any user's
+  // in-flight order" and accidentally complete userA's order.
+  const addressA = `0xDEPOSIT${Math.random().toString(36).slice(2)}`;
+  const addressB = `0xDEPOSIT${Math.random().toString(36).slice(2)}`;
+  const userAId = await insertTestUser(addressA);
+  await insertTestUser(addressB);
+  const orderAId = await insertOrderInState(userAId, "bridging");
+  const { onReconciled, reconciled } = waitForReconciliation();
+
+  const app = createWebhooksRoute({
+    getRedeemByTransferTxHash: async () => ({
+      address: addressB,
+      status: "SUCCESS",
+      amountFrom: "32000",
+      transferTxHash: "0xTRANSFER4",
+    }),
+    onReconciled,
+  });
+
+  const res = await app.request("/webhooks/idrx", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ txHash: "0xTRANSFER4" }),
+  });
+
+  assert.equal(res.status, 200);
+  await reconciled;
+
+  const pool = getPool();
+  const { rows } = await pool.query(`SELECT state FROM orders WHERE id = $1`, [orderAId]);
+  assert.equal(rows[0].state, "bridging");
+});
+
 test("POST /webhooks/idrx returns 200 and does not crash when depositRedeemRequest/txHash is absent", async () => {
   const app = createWebhooksRoute({
     getRedeemByTransferTxHash: async () => {

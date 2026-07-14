@@ -16,7 +16,14 @@ async function insertTestUser(provider = "other"): Promise<string> {
   const pool = getPool();
   const { rows } = await pool.query(
     `INSERT INTO users (stellar_public_key, idrx_deposit_address, provider) VALUES ($1, $2, $3) RETURNING id`,
-    [`GTESTUSER${Math.random().toString(36).slice(2)}`, "0xDEPOSIT...", provider]
+    [
+      `GTESTUSER${Math.random().toString(36).slice(2)}`,
+      // Randomized: users.idrx_deposit_address has a partial unique index
+      // (see schema.sql), and this helper is called by many tests within a
+      // single run — a fixed literal here would collide with itself.
+      `0xDEPOSIT${Math.random().toString(36).slice(2)}`,
+      provider,
+    ]
   );
   return rows[0].id;
 }
@@ -139,6 +146,55 @@ test("POST /orders returns 400 for a non-numeric amountIdr query param", async (
   });
 
   assert.equal(res.status, 400);
+});
+
+test("POST /orders returns 409 when the user already has an order in progress", async () => {
+  const userId = await insertTestUser();
+
+  const app = createOrdersRoute({
+    getQuote: async () => ({
+      amountUsdc: "2.02",
+      rateIdrPerUsdc: "16000",
+      expiresAt: new Date(Date.now() + 30_000),
+    }),
+    buildBridgeTx: async () => ({ unsignedXdr: "FAKE_UNSIGNED_XDR" }),
+  });
+
+  const qrContent = buildQris([
+    ["00", "01"],
+    ["01", "12"],
+    ["53", "360"],
+    ["54", "32000"],
+    ["58", "ID"],
+    ["59", "Warung Kopi Asa"],
+    ["60", "Jakarta"],
+  ]);
+
+  const firstRes = await app.request("/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, qrContent }),
+  });
+  assert.equal(firstRes.status, 201);
+  const firstBody = await firstRes.json();
+
+  // The order created above lands in "quoted" — a non-terminal state — so a
+  // second order for the same user must be rejected rather than silently
+  // creating a concurrent in-flight order (see Finding 1).
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [firstBody.orderId]);
+  assert.notEqual(rows[0].state, "completed");
+  assert.notEqual(rows[0].state, "failed");
+
+  const secondRes = await app.request("/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, qrContent }),
+  });
+
+  assert.equal(secondRes.status, 409);
+  const secondBody = await secondRes.json();
+  assert.equal(secondBody.error, "an order is already in progress for this user");
 });
 
 test("POST /orders/:id/approve submits the signed XDR and transitions to bridging", async () => {

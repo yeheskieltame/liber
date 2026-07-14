@@ -9,6 +9,13 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Partial (NULL-excluding) so pre-onboarding-completion users (no deposit
+-- address yet) don't collide with each other, while enforcing that any
+-- assigned deposit address maps back to exactly one user — the webhook
+-- reconciliation in routes/webhooks.ts relies on this being true.
+CREATE UNIQUE INDEX IF NOT EXISTS users_idrx_deposit_address_unique
+  ON users (idrx_deposit_address) WHERE idrx_deposit_address IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id),
