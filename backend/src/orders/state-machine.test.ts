@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { transition, InvalidTransitionError } from "./state-machine.js";
+import { transition, InvalidTransitionError, type OrderState } from "./state-machine.js";
 
 test("happy path: scanned -> quoted -> approved -> bridging -> redeeming -> completed", () => {
   assert.equal(transition("scanned", "quote_received"), "quoted");
