@@ -2052,6 +2052,120 @@ git commit -m "Add balance route (USDC balance + IDR estimate via CoinGecko rate
 
 ---
 
+### Task 14: Order history route
+
+**Files:**
+- Create: `backend/src/routes/history.ts`
+- Modify: `backend/src/app.ts`
+- Test: `backend/src/routes/history.test.ts`
+
+**Interfaces:**
+- Produces: `GET /users/:id/orders` → `200 { orders: Array<{ orderId, merchantName, merchantCity, amountIdr, amountUsdc, state, stellarTxHash, createdAt }> }`, newest first. Covers the "riwayat transaksi" MVP feature (`LIBER-CONCEPT.md` §4 item 4) that Task 10 (frontend history page) depends on.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+// backend/src/routes/history.test.ts
+import { test, before } from "node:test";
+import assert from "node:assert/strict";
+import { createApp } from "../app.js";
+import { getPool } from "../db/pool.js";
+import { migrate } from "../db/migrate.js";
+
+before(async () => {
+  await migrate();
+});
+
+test("GET /users/:id/orders returns past orders newest first", async () => {
+  const pool = getPool();
+  const { rows: userRows } = await pool.query(
+    `INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`,
+    ["GHISTORYUSER..."]
+  );
+  const userId = userRows[0].id;
+
+  await pool.query(
+    `INSERT INTO orders (user_id, qr_content, merchant_name, merchant_city, amount_idr, amount_usdc, from_account_address, state, stellar_tx_hash, created_at)
+     VALUES ($1, 'qr1', 'Warung A', 'Jakarta', 10000, '0.62', 'G...', 'completed', 'hash1', now() - interval '1 hour'),
+            ($1, 'qr2', 'Warung B', 'Bandung', 20000, '1.25', 'G...', 'completed', 'hash2', now())`,
+    [userId]
+  );
+
+  const app = createApp();
+  const res = await app.request(`/users/${userId}/orders`);
+  const body = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.orders.length, 2);
+  assert.equal(body.orders[0].merchantName, "Warung B"); // newest first
+  assert.equal(body.orders[1].merchantName, "Warung A");
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `DATABASE_URL=postgres://localhost/liber npm test -- src/routes/history.test.ts`
+Expected: FAIL with "Cannot find module './history.js'"
+
+- [ ] **Step 3: Write routes/history.ts**
+
+```typescript
+// backend/src/routes/history.ts
+import { Hono } from "hono";
+import { getPool } from "../db/pool.js";
+
+export const historyRoute = new Hono();
+
+historyRoute.get("/users/:id/orders", async (c) => {
+  const { rows } = await getPool().query(
+    `SELECT id, merchant_name, merchant_city, amount_idr, amount_usdc, state, stellar_tx_hash, created_at
+     FROM orders WHERE user_id = $1 ORDER BY created_at DESC`,
+    [c.req.param("id")]
+  );
+
+  return c.json({
+    orders: rows.map((r) => ({
+      orderId: r.id,
+      merchantName: r.merchant_name,
+      merchantCity: r.merchant_city,
+      amountIdr: r.amount_idr,
+      amountUsdc: r.amount_usdc,
+      state: r.state,
+      stellarTxHash: r.stellar_tx_hash,
+      createdAt: r.created_at,
+    })),
+  });
+});
+```
+
+- [ ] **Step 4: Mount the route**
+
+```typescript
+// backend/src/app.ts (modify)
+import { historyRoute } from "./routes/history.js";
+// ...
+app.route("/", historyRoute);
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `DATABASE_URL=postgres://localhost/liber npm test -- src/routes/history.test.ts`
+Expected: PASS
+
+- [ ] **Step 6: Run the full suite one final time**
+
+Run: `DATABASE_URL=postgres://localhost/liber STELLAR_NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015" USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN npm test`
+Expected: PASS (all tests, all tasks)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/src/routes/history.ts backend/src/app.ts
+git commit -m "Add order history route (closes MVP riwayat transaksi gap)"
+```
+
+---
+
 ## Deployment (Railway)
 
 After Task 11 is green:
