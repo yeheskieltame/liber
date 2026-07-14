@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { parseQRIS } from "../qris/parser.js";
 import { getQuote as defaultGetQuote } from "../quote/quote.js";
-import { transition } from "../orders/state-machine.js";
+import { transition, InvalidTransitionError } from "../orders/state-machine.js";
 import { insertOrder, getOrder, getOrderWithProvider, updateOrderState } from "../orders/repository.js";
 import { buildBridgeTx as defaultBuildBridgeTx, submitBridgeTx as defaultSubmitBridgeTx } from "../bridge/allbridge.js";
 import { buildEwalletHandoff } from "../deeplink/builder.js";
@@ -76,7 +76,15 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
     const order = await getOrder(id);
     if (!order) return c.json({ error: "order not found" }, 404);
 
-    const approvedState = transition(order.state, "user_approved");
+    let approvedState;
+    try {
+      approvedState = transition(order.state, "user_approved");
+    } catch (err) {
+      if (err instanceof InvalidTransitionError) {
+        return c.json({ error: err.message }, 409);
+      }
+      throw err;
+    }
     await updateOrderState(id, approvedState);
 
     try {

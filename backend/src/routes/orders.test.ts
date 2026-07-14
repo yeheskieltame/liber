@@ -6,6 +6,7 @@ import { migrate } from "../db/migrate.js";
 import { insertOrder } from "../orders/repository.js";
 import { buildQris } from "../qris/test-helpers.js";
 import { createOrdersRoute } from "./orders.js";
+import type { OrderState } from "../orders/state-machine.js";
 
 before(async () => {
   await migrate();
@@ -16,6 +17,29 @@ async function insertTestUser(provider = "other"): Promise<string> {
   const { rows } = await pool.query(
     `INSERT INTO users (stellar_public_key, idrx_deposit_address, provider) VALUES ($1, $2, $3) RETURNING id`,
     [`GTESTUSER${Math.random().toString(36).slice(2)}`, "0xDEPOSIT...", provider]
+  );
+  return rows[0].id;
+}
+
+async function insertOrderWithState(
+  userId: string,
+  state: OrderState
+): Promise<string> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `INSERT INTO orders (user_id, qr_content, merchant_name, merchant_city, amount_idr, amount_usdc, quote_expires_at, from_account_address, state)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [
+      userId,
+      "irrelevant-for-this-test",
+      "Warung Kopi Asa",
+      "Jakarta",
+      "32000",
+      "2.02",
+      new Date(Date.now() + 30_000),
+      "GFROMACCOUNT...",
+      state,
+    ]
   );
   return rows[0].id;
 }
@@ -173,6 +197,29 @@ test("POST /orders/:id/approve returns 404 for an unknown order", async () => {
   });
 
   assert.equal(res.status, 404);
+});
+
+test("POST /orders/:id/approve returns 409 when order is not in quoted state", async () => {
+  const userId = await insertTestUser();
+  const orderId = await insertOrderWithState(userId, "bridging");
+
+  const app = createOrdersRoute({
+    submitBridgeTx: async () => ({ hash: "FAKE_STELLAR_TX_HASH" }),
+  });
+
+  const res = await app.request(`/orders/${orderId}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signedXdr: "SIGNED_XDR" }),
+  });
+
+  assert.equal(res.status, 409);
+  const body = await res.json();
+  assert.match(body.error, /Cannot apply event "user_approved" to state "bridging"/);
+
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [orderId]);
+  assert.equal(rows[0].state, "bridging");
 });
 
 test("GET /orders/:id returns order status plus e-wallet handoff for the owner's provider", async () => {
