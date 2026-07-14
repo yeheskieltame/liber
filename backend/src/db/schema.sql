@@ -38,3 +38,13 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 CREATE INDEX IF NOT EXISTS orders_user_id_idx ON orders(user_id);
+
+-- Partial (terminal-state-excluding) so a user can freely start a new order
+-- once their previous one has completed or failed, while enforcing that a
+-- user can never have more than one non-terminal order at a time — the
+-- app-level check-then-act guard in routes/orders.ts (POST /orders) is only
+-- a fast pre-check; this index is what actually closes the race between two
+-- truly-concurrent requests that both pass that check before either INSERT
+-- lands.
+CREATE UNIQUE INDEX IF NOT EXISTS orders_one_in_flight_per_user
+  ON orders (user_id) WHERE state NOT IN ('completed', 'failed');

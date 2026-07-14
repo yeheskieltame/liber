@@ -49,17 +49,31 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
     }
 
     const quote = await getQuote(amountIdr);
-    const order = await insertOrder({
-      userId,
-      qrContent,
-      merchantName: parsed.merchantName,
-      merchantCity: parsed.merchantCity,
-      amountIdr: amountIdr.toString(),
-      amountUsdc: quote.amountUsdc,
-      rateIdrPerUsdc: quote.rateIdrPerUsdc,
-      quoteExpiresAt: quote.expiresAt,
-      fromAccountAddress: user.stellar_public_key,
-    });
+    let order;
+    try {
+      order = await insertOrder({
+        userId,
+        qrContent,
+        merchantName: parsed.merchantName,
+        merchantCity: parsed.merchantCity,
+        amountIdr: amountIdr.toString(),
+        amountUsdc: quote.amountUsdc,
+        rateIdrPerUsdc: quote.rateIdrPerUsdc,
+        quoteExpiresAt: quote.expiresAt,
+        fromAccountAddress: user.stellar_public_key,
+      });
+    } catch (err) {
+      // Belt-and-suspenders: the SELECT-based check above is a cheap
+      // pre-check that avoids quote/parse work in the common case, but it's
+      // check-then-act and can't close a race between two truly-concurrent
+      // requests. The orders_one_in_flight_per_user partial unique index
+      // (schema.sql) is the actual enforcement; map its violation to the
+      // same 409 rather than letting it surface as an unhandled 500.
+      if ((err as { code?: string }).code === "23505") {
+        return c.json({ error: "an order is already in progress for this user" }, 409);
+      }
+      throw err;
+    }
 
     const { unsignedXdr } = await buildBridgeTx({
       fromAccountAddress: user.stellar_public_key,
