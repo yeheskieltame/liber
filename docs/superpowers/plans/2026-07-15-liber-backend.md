@@ -926,26 +926,23 @@ git commit -m "Add IDRX HMAC-signed API client (onboarding, bank accounts, tx hi
 **Interfaces:**
 - Produces: `buildOnboardingTx(params: { fundingSecret: string; newAccountPublicKey: string; startingBalanceXlm: string }): Promise<{ signedXdr: string }>` (funding account creates + funds the new user account, signed with the funding key — safe, since the funding key is backend-only and never controls the new account) and `buildTrustlineTx(params: { accountPublicKey: string }): Promise<{ unsignedXdr: string }>` (built for the NEW account, must be signed by the user's own key in `frontend/` — backend never signs this one).
 
-- [ ] **Step 1: Write the failing test**
+**Design note:** building a real transaction needs the source account's current sequence number from the network (`Horizon.loadAccount`) — but a unit test shouldn't depend on a live Horizon call against a random, never-funded test keypair (it would 404). So each builder is split into two functions from the start: a pure `...FromAccount` function that takes an already-loaded `Account` object (what the test exercises, using a plain `new Account(publicKey, sequence)` fixture), and a thin async wrapper that does the real `loadAccount` call and delegates to it (what production code calls).
 
-Verify transaction structure without touching the network — build the tx, then inspect its decoded operations.
+- [ ] **Step 1: Write the failing test**
 
 ```typescript
 // backend/src/stellar/account.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
-import { buildOnboardingTx, buildTrustlineTx } from "./account.js";
+import { Account, Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
+import { buildOnboardingTxFromAccount, buildTrustlineTxFromAccount } from "./account.js";
 
-test("buildOnboardingTx produces a signed createAccount operation with the right starting balance", async () => {
+test("buildOnboardingTxFromAccount produces a signed createAccount operation with the right starting balance", () => {
   const funding = Keypair.random();
   const newAccount = Keypair.random();
+  const sourceAccount = new Account(funding.publicKey(), "100");
 
-  const { signedXdr } = await buildOnboardingTx({
-    fundingSecret: funding.secret(),
-    newAccountPublicKey: newAccount.publicKey(),
-    startingBalanceXlm: "1.5",
-  });
+  const { signedXdr } = buildOnboardingTxFromAccount(sourceAccount, funding.secret(), newAccount.publicKey(), "1.5");
 
   const tx = TransactionBuilder.fromXDR(signedXdr, process.env.STELLAR_NETWORK_PASSPHRASE!);
   assert.equal(tx.operations.length, 1);
@@ -954,12 +951,14 @@ test("buildOnboardingTx produces a signed createAccount operation with the right
   assert.equal((op as any).destination, newAccount.publicKey());
   assert.equal((op as any).startingBalance, "1.5");
   assert.equal(tx.source, funding.publicKey());
+  assert.equal(tx.signatures.length, 1);
 });
 
-test("buildTrustlineTx produces an unsigned changeTrust operation for USDC", async () => {
+test("buildTrustlineTxFromAccount produces an unsigned changeTrust operation for USDC", () => {
   const account = Keypair.random();
+  const sourceAccount = new Account(account.publicKey(), "100");
 
-  const { unsignedXdr } = await buildTrustlineTx({ accountPublicKey: account.publicKey() });
+  const { unsignedXdr } = buildTrustlineTxFromAccount(sourceAccount);
 
   const tx = TransactionBuilder.fromXDR(unsignedXdr, process.env.STELLAR_NETWORK_PASSPHRASE!);
   assert.equal(tx.operations.length, 1);
@@ -978,11 +977,10 @@ Expected: FAIL with "Cannot find module './account.js'"
 
 - [ ] **Step 3: Write account.ts**
 
-Building a real transaction requires the source account's current sequence number from the network (`Horizon.loadAccount`) — this part does need a live Horizon call even to build an XDR, so it's isolated behind a small `loadAccount` wrapper the test doesn't exercise directly (the test only inspects the operations/signatures, not sequence numbers).
-
 ```typescript
 // backend/src/stellar/account.ts
 import {
+  Account,
   Asset,
   Horizon,
   Keypair,
@@ -998,54 +996,6 @@ const BASE_FEE = "10000"; // stroops, generous for mainnet inclusion
 function server() {
   return new Horizon.Server(HORIZON_URL());
 }
-
-export async function buildOnboardingTx(params: {
-  fundingSecret: string;
-  newAccountPublicKey: string;
-  startingBalanceXlm: string;
-}): Promise<{ signedXdr: string }> {
-  const funding = Keypair.fromSecret(params.fundingSecret);
-  const account = await server().loadAccount(funding.publicKey());
-
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK_PASSPHRASE(),
-  })
-    .addOperation(
-      Operation.createAccount({
-        destination: params.newAccountPublicKey,
-        startingBalance: params.startingBalanceXlm,
-      })
-    )
-    .setTimeout(30)
-    .build();
-
-  tx.sign(funding);
-  return { signedXdr: tx.toXDR() };
-}
-
-export async function buildTrustlineTx(params: {
-  accountPublicKey: string;
-}): Promise<{ unsignedXdr: string }> {
-  const account = await server().loadAccount(params.accountPublicKey);
-
-  const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK_PASSPHRASE(),
-  })
-    .addOperation(Operation.changeTrust({ asset: USDC() }))
-    .setTimeout(30)
-    .build();
-
-  return { unsignedXdr: tx.toXDR() };
-}
-```
-
-Note: `loadAccount` hits real Horizon, so the unit test above can't run this function as-is against a random never-funded keypair (it would 404). Adjust the test to build the transaction structurally with a stubbed source account instead of a live lookup — do this by extracting a small `buildFromLoadedAccount` helper that takes an already-loaded `Account` object, and have the test construct a plain `Account(publicKey, sequence)` directly:
-
-```typescript
-// revised account.ts: split network I/O from tx building
-import { Account } from "@stellar/stellar-sdk";
 
 export function buildOnboardingTxFromAccount(
   sourceAccount: Account,
@@ -1068,12 +1018,23 @@ export async function buildOnboardingTx(params: {
   startingBalanceXlm: string;
 }): Promise<{ signedXdr: string }> {
   const funding = Keypair.fromSecret(params.fundingSecret);
-  const account = await server().loadAccount(funding.publicKey());
-  return buildOnboardingTxFromAccount(account, params.fundingSecret, params.newAccountPublicKey, params.startingBalanceXlm);
+  const sourceAccount = await server().loadAccount(funding.publicKey());
+  return buildOnboardingTxFromAccount(sourceAccount, params.fundingSecret, params.newAccountPublicKey, params.startingBalanceXlm);
+}
+
+export function buildTrustlineTxFromAccount(sourceAccount: Account): { unsignedXdr: string } {
+  const tx = new TransactionBuilder(sourceAccount, { fee: BASE_FEE, networkPassphrase: NETWORK_PASSPHRASE() })
+    .addOperation(Operation.changeTrust({ asset: USDC() }))
+    .setTimeout(30)
+    .build();
+  return { unsignedXdr: tx.toXDR() };
+}
+
+export async function buildTrustlineTx(params: { accountPublicKey: string }): Promise<{ unsignedXdr: string }> {
+  const sourceAccount = await server().loadAccount(params.accountPublicKey);
+  return buildTrustlineTxFromAccount(sourceAccount);
 }
 ```
-
-Update the test to call `buildOnboardingTxFromAccount(new Account(funding.publicKey(), "100"), funding.secret(), newAccount.publicKey(), "1.5")` (and the equivalent split for `buildTrustlineTx`/`buildTrustlineTxFromAccount`) so it never touches the network. Apply the same split to `buildTrustlineTx`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
