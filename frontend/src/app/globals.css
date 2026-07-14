@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-ink: #101e1a;
+  --color-paper: #f5f7f1;
+  --color-emerald: #0b6b4e;
+  --color-emerald-bright: #2fd98a;
+  --color-emerald-deep: #063d2c;
+  --color-gold: #e7a33a;
+  --color-rose: #d6533f;
+  --font-display: var(--font-newsreader);
+  --font-body: var(--font-bricolage);
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.liber-mesh {
+  position: absolute;
+  inset: -20% -15% auto -15%;
+  height: 65vh;
+  background:
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--color-emerald-bright) 38%, transparent) 0%, transparent 55%),
+    radial-gradient(circle at 85% 8%, color-mix(in srgb, var(--color-gold) 28%, transparent) 0%, transparent 50%),
+    radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--color-emerald) 22%, transparent) 0%, transparent 60%);
+  filter: blur(48px);
+  pointer-events: none;
+}

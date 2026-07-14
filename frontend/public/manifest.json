@@ -1,0 +1,9 @@
+{
+  "name": "Liber",
+  "short_name": "Liber",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#063D2C",
+  "theme_color": "#0B6B4E",
+  "icons": []
+}
