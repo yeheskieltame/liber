@@ -2,16 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseQRIS, parseTLV } from "./parser.js";
-import { calculateCRC16 } from "./crc16.js";
-
-function tlv(tag: string, value: string): string {
-  return tag + value.length.toString().padStart(2, "0") + value;
-}
-
-function buildQris(fields: Array<[string, string]>): string {
-  const body = fields.map(([tag, value]) => tlv(tag, value)).join("") + "6304";
-  return body + calculateCRC16(body);
-}
+import { tlv, buildQris } from "./test-helpers.js";
 
 test("parseTLV parses a single tag", () => {
   const elements = parseTLV(tlv("00", "01"));
