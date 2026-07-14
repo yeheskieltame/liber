@@ -32,13 +32,18 @@ async function idrxRequest<T>(
   const timestamp = Date.now().toString();
   const signature = signRequest(config.apiSecret, method, path, timestamp, bodyStringForSignature);
 
+  const headers: Record<string, string> = {
+    "idrx-api-key": config.apiKey,
+    "idrx-api-sig": signature,
+    "idrx-api-ts": timestamp,
+  };
+  if (typeof body === "string") {
+    headers["Content-Type"] = "application/json";
+  }
+
   const res = await fetch(`${config.baseUrl}${path}`, {
     method,
-    headers: {
-      "idrx-api-key": config.apiKey,
-      "idrx-api-sig": signature,
-      "idrx-api-ts": timestamp,
-    },
+    headers,
     body,
   });
 
