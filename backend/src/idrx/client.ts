@@ -105,16 +105,22 @@ export async function getBankAccounts(
   return rows.map((r) => ({ bankCode: r.bankCode, depositWalletAddress: r.DepositWalletAddress.walletAddress }));
 }
 
-export async function getTransactionHistory(
+export interface RedeemRecord {
+  address: string;
+  status: string;
+  amountFrom: string;
+  transferTxHash: string;
+}
+
+export async function getRedeemByTransferTxHash(
   config: IdrxConfig,
-  merchantOrderId: string
-): Promise<{ status: string } | null> {
-  const rows = await idrxRequest<Array<{ merchantOrderId: string; adminMintStatus?: string; status?: string }>>(
+  transferTxHash: string
+): Promise<RedeemRecord | null> {
+  const rows = await idrxRequest<Array<{ address: string; status: string; amountFrom: string; transferTxHash: string }>>(
     config,
     "GET",
-    `/api/transaction/user-transaction-history?merchantOrderId=${encodeURIComponent(merchantOrderId)}`
+    `/api/transaction/user-transaction-history?transferTxHash=${encodeURIComponent(transferTxHash)}`
   );
-  const match = rows.find((r) => r.merchantOrderId === merchantOrderId);
-  if (!match) return null;
-  return { status: match.adminMintStatus ?? match.status ?? "UNKNOWN" };
+  const match = rows.find((r) => r.transferTxHash === transferTxHash);
+  return match ? { address: match.address, status: match.status, amountFrom: match.amountFrom, transferTxHash: match.transferTxHash } : null;
 }
