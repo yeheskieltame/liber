@@ -1,9 +1,10 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { buildBridgeTx } from "./allbridge.js";
+import type { SendParams } from "@allbridge/bridge-core-sdk";
 
 test("buildBridgeTx asks the SDK for SRB->BAS USDC with the right send params", async () => {
-  const rawTxBuilderSend = mock.fn(async () => "FAKE_XDR");
+  const rawTxBuilderSend = mock.fn(async (_params: SendParams) => "FAKE_XDR");
   const fakeSdk = {
     chainDetailsMap: mock.fn(async () => ({
       SRB: { tokens: [{ symbol: "USDC", tokenAddress: "srb-usdc-addr" }] },

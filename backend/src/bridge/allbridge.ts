@@ -1,13 +1,12 @@
 import {
   AllbridgeCoreSdk,
-  AmountFormat,
   ChainSymbol,
   FeePaymentMethod,
   Messenger,
   nodeRpcUrlsDefault,
   type SendParams,
 } from "@allbridge/bridge-core-sdk";
-import { rpc as SorobanRpc, TransactionBuilder, Keypair } from "@stellar/stellar-sdk";
+import { rpc as SorobanRpc } from "@stellar/stellar-sdk";
 
 function defaultSdk() {
   return new AllbridgeCoreSdk(nodeRpcUrlsDefault);
@@ -61,6 +60,9 @@ export async function submitBridgeTx(
   }
 
   const sent = await sdk.utils.srb.sendTransactionSoroban(signedXdr);
+  if (sent.status === "ERROR") {
+    throw new Error(`Bridge transaction rejected at submission: ${sent.hash} (status: ERROR)`);
+  }
   const confirm = await sdk.utils.srb.confirmTx(sent.hash);
 
   if (confirm.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
