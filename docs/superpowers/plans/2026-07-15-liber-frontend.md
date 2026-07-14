@@ -2,31 +2,54 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the `frontend/` Next.js PWA — onboarding, QR scan, quote, approve/sign, status tracking, e-wallet handoff, balance and history — that drives the Liber payment flow entirely through the `backend/` HTTP API defined in `docs/superpowers/plans/2026-07-15-liber-backend.md`.
+**Goal:** Build the `frontend/` Next.js PWA — onboarding, QR scan, quote, approve/sign, status tracking, e-wallet handoff, balance and history — that drives the Liber payment flow entirely through the `backend/` HTTP API defined in `docs/superpowers/plans/2026-07-15-liber-backend.md`, with a distinctive, premium "mobile bank" visual identity (see §Design System below).
 
-**Architecture:** Next.js App Router PWA. A thin `lib/` layer holds all non-UI logic (wallet keypair + signing, QRIS parsing, the backend API client) so it's unit-testable without a browser. Pages are thin — they call `lib/` functions and render state. The wallet's secret key never leaves the browser and is never sent to `backend/`; only signed XDR strings are.
+**Architecture:** Next.js App Router PWA. A thin `lib/` layer holds all non-UI logic (wallet keypair + signing, QRIS parsing, the backend API client) so it's unit-testable without a browser. Pages compose from a shared `components/ui/` design-system layer (Task 5) so the visual language stays consistent across all six screens instead of each page inventing its own styling. The wallet's secret key never leaves the browser and is never sent to `backend/`; only signed XDR strings are.
 
-**Tech Stack:** Next.js (App Router, TypeScript), `@stellar/stellar-sdk` (client-side keypair + signing), `html5-qrcode` (camera scanning), `qrcode` (re-rendering a QR image for the e-wallet handoff step). Test runner for `lib/` logic: Node's built-in `node:test` (same choice as `backend/`, for the same reason — nothing here needs more than that). Pages are verified with a manual checklist per the approved spec (`docs/superpowers/specs/2026-07-15-liber-architecture-design.md` §8: no e2e framework for MVP — camera QR scanning needs real hardware anyway).
+**Tech Stack:** Next.js (App Router, TypeScript, Tailwind v4 CSS-first theme), `@stellar/stellar-sdk` (client-side keypair + signing), `html5-qrcode` (camera scanning), `qrcode` (re-rendering a QR image for the e-wallet handoff step). Test runner for `lib/` logic: Node's built-in `node:test`. Pages are verified with a manual checklist AND a real browser screenshot (per the design intent below) — no e2e framework for MVP, camera QR scanning needs real hardware anyway.
 
 ## Global Constraints
 
 - This is `frontend/` — a fully standalone project. No root `package.json`, no workspace file, no imports from `../backend` or `../contracts`. Any logic shared in spirit with `backend/` (e.g. the QRIS parser) is duplicated here as its own copy, per the approved "fully isolated" repo decision.
 - Deploy target: Vercel (`vercel deploy`, project root = `frontend/`).
-- **v1 wallet model (spec §10.1):** a plain Stellar Ed25519 keypair generated in the browser via `Keypair.random()`. The secret key is stored in `window.localStorage` (a simplification from the spec's IndexedDB mention — same security posture, same "backend never sees it" boundary, just a synchronous API instead of IndexedDB's async transactions; not worth the extra complexity for one string value in a hackathon MVP). This is a `ponytail:`-flagged shortcut — upgrade path is Passkey Kit once its mainnet deployment ships (spec §10.1).
+- **v1 wallet model (spec §10.1):** a plain Stellar Ed25519 keypair generated in the browser via `Keypair.random()`. The secret key is stored in `window.localStorage` (a simplification from the spec's IndexedDB mention — same security posture, same "backend never sees it" boundary, just a synchronous API instead of IndexedDB's async transactions). This is a `ponytail:`-flagged shortcut — upgrade path is Passkey Kit once its mainnet deployment ships (spec §10.1).
 - Boundary rule (spec §5): this app never calls Horizon, Allbridge, or IDRX directly — only `backend/`'s HTTP API (`NEXT_PUBLIC_BACKEND_URL`).
-- No e2e test framework added. Pure logic in `lib/` gets `node:test` coverage; pages get a manual checklist (concrete steps, run on a real phone for camera access).
+- No e2e test framework added. Pure logic in `lib/` gets `node:test` coverage; pages get a manual checklist plus a real screenshot review (visual quality can't be judged from a diff alone).
+
+## Design System
+
+Liber is a crypto-to-QRIS payment wallet for Indonesian freelancers paid in USDC — it needs to feel like a real, trustworthy neobank app (GoPay/Jenius-grade), not a dApp, and not another generic blue-purple-gradient fintech template. The identity leans into the brand's own meaning (*Liber* = freedom of movement) with an emerald-and-gold palette instead of the generic blue/purple pairing, and a serif-italic-in-headline technique paired with a characterful grotesque — deliberately avoiding the most overused AI-generated defaults (Inter, Space Grotesk, purple gradients, warm-cream-plus-terracotta).
+
+**Color tokens** (defined once in `globals.css`, consumed everywhere as Tailwind utilities — `bg-emerald`, `text-ink`, etc.):
+
+| Token | Hex | Use |
+|---|---|---|
+| `--color-ink` | `#101E1A` | Primary text, deep green-black |
+| `--color-paper` | `#F5F7F1` | Page background, sage-tinted off-white |
+| `--color-emerald` | `#0B6B4E` | Primary brand color |
+| `--color-emerald-bright` | `#2FD98A` | Positive/active accents, gradients |
+| `--color-emerald-deep` | `#063D2C` | Gradient anchor, dark surfaces |
+| `--color-gold` | `#E7A33A` | Primary CTA, highlights, currency cue |
+| `--color-rose` | `#D6533F` | Errors/failed states only, used sparingly |
+
+**Typography:** Display/accent — **Newsreader** (italic, for emphasis words and money amounts in headlines, e.g. *"bebas berpindah"*). Body/UI — **Bricolage Grotesque** (labels, buttons, running text, tabular numerals for balances). Both via `next/font/google`. Never Inter, never Arial/system-ui as the primary face.
+
+**Layout motif:** Mobile-first, single column, max content width 430px centered (reads correctly as a "phone app" even on a wider viewport during review). A soft multi-color gradient mesh sits fixed behind the content (the "liquid movement" cue). The signature recurring element is the **gradient balance card** — a large rounded emerald-gradient card styled like a premium debit card, anchoring the home screen and echoed (smaller) wherever a monetary amount needs emphasis. Buttons are full-width pills, primary actions always reach the bottom of the screen (thumb zone). Cards are `rounded-3xl` white surfaces with soft emerald-tinted shadows, never a plain grey border.
+
+**Copy rule:** No em-dashes anywhere in UI copy (headlines, buttons, labels, error messages) — use a period, comma, or restructure the sentence instead.
 
 ---
 
-### Task 1: Scaffold Next.js PWA
+### Task 1: Scaffold Next.js PWA + design system tokens
 
 **Files:**
 - Create: `frontend/` (via `create-next-app`)
 - Create: `frontend/public/manifest.json`
 - Modify: `frontend/src/app/layout.tsx`
+- Modify: `frontend/src/app/globals.css`
 
 **Interfaces:**
-- Produces: a running Next.js dev server with a health-check-equivalent home page, and `NEXT_PUBLIC_BACKEND_URL` wired through `.env.local`.
+- Produces: a running Next.js dev server with a health-check-equivalent home page, `NEXT_PUBLIC_BACKEND_URL` wired through `.env.local`, and the color/font tokens from the Design System section above available as Tailwind utilities (`bg-emerald`, `text-gold`, `font-display`, `font-body`) to every later task.
 
 - [ ] **Step 1: Scaffold the project**
 
@@ -46,7 +69,72 @@ npm install -D @types/qrcode
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 ```
 
-- [ ] **Step 3: Add a minimal PWA manifest**
+- [ ] **Step 3: Set up fonts and design tokens**
+
+```typescript
+// frontend/src/app/fonts.ts
+import { Newsreader, Bricolage_Grotesque } from "next/font/google";
+
+export const newsreader = Newsreader({
+  subsets: ["latin"],
+  style: ["italic", "normal"],
+  weight: ["400", "500", "600"],
+  variable: "--font-newsreader",
+});
+
+export const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-bricolage",
+});
+```
+
+Replace the generated `frontend/src/app/globals.css` content with:
+
+```css
+@import "tailwindcss";
+
+@theme inline {
+  --color-ink: #101e1a;
+  --color-paper: #f5f7f1;
+  --color-emerald: #0b6b4e;
+  --color-emerald-bright: #2fd98a;
+  --color-emerald-deep: #063d2c;
+  --color-gold: #e7a33a;
+  --color-rose: #d6533f;
+  --font-display: var(--font-newsreader);
+  --font-body: var(--font-bricolage);
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.liber-mesh {
+  position: absolute;
+  inset: -20% -15% auto -15%;
+  height: 65vh;
+  background:
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--color-emerald-bright) 38%, transparent) 0%, transparent 55%),
+    radial-gradient(circle at 85% 8%, color-mix(in srgb, var(--color-gold) 28%, transparent) 0%, transparent 50%),
+    radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--color-emerald) 22%, transparent) 0%, transparent 60%);
+  filter: blur(48px);
+  pointer-events: none;
+}
+```
+
+Wire the fonts into `frontend/src/app/layout.tsx`'s root `<html>`/`<body>`:
+
+```tsx
+import { newsreader, bricolage } from "./fonts";
+// ...
+<html lang="id" className={`${newsreader.variable} ${bricolage.variable}`}>
+  <body className="font-body antialiased">{children}</body>
+</html>
+```
+
+- [ ] **Step 4: Add a minimal PWA manifest**
 
 ```json
 // frontend/public/manifest.json
@@ -55,24 +143,24 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
   "short_name": "Liber",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#063D2C",
+  "theme_color": "#0B6B4E",
   "icons": []
 }
 ```
 
-Link it in `frontend/src/app/layout.tsx` by adding `<link rel="manifest" href="/manifest.json" />` inside the existing `<head>` (via Next's `metadata` export: `export const metadata = { manifest: "/manifest.json" }`). Full offline service-worker caching is skipped — `ponytail: manifest only, add a service worker if the demo actually needs offline access` (it doesn't: the whole flow requires network to backend/Stellar anyway).
+Link it via Next's `metadata` export in `layout.tsx`: `export const metadata = { title: "Liber", manifest: "/manifest.json" }`. Full offline service-worker caching is skipped — `ponytail: manifest only, add a service worker if the demo actually needs offline access` (it doesn't: the whole flow requires network to backend/Stellar anyway).
 
-- [ ] **Step 4: Verify the dev server runs**
+- [ ] **Step 5: Verify the dev server runs**
 
 Run: `npm run dev` (inside `frontend/`)
-Expected: server starts on `http://localhost:3000`, default Next.js page loads in browser.
+Expected: server starts on `http://localhost:3000`, page loads with the `paper` background color visible (confirms the `@theme` tokens resolved).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add frontend/
-git commit -m "Scaffold frontend: Next.js App Router PWA"
+git commit -m "Scaffold frontend: Next.js App Router PWA + emerald/gold design tokens"
 ```
 
 ---
@@ -92,7 +180,7 @@ git commit -m "Scaffold frontend: Next.js App Router PWA"
   - `WalletStorage` interface with `get(key): Promise<string | null>` / `set(key, value): Promise<void>`
   - `MemoryWalletStorage` (tests) and `LocalStorageWalletStorage` (production, wraps `window.localStorage`)
   - `getOrCreateWallet(storage: WalletStorage): Promise<{ publicKey: string; secretKey: string }>` — loads an existing wallet or generates+persists a new one.
-- Task 5 (onboarding page) and Task 6/7 (sign order transactions) both depend on these exact names.
+- Task 6 (onboarding page) and Task 8 (approve+status page) both depend on these exact names.
 
 - [ ] **Step 1: Write the failing keypair test**
 
@@ -100,7 +188,7 @@ git commit -m "Scaffold frontend: Next.js App Router PWA"
 // frontend/src/lib/wallet/keypair.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Keypair, TransactionBuilder, Account, Operation } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Account, Operation, Asset } from "@stellar/stellar-sdk";
 import { generateKeypair, signXdr } from "./keypair.js";
 
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
@@ -109,7 +197,6 @@ test("generateKeypair returns a valid Stellar keypair", () => {
   const { publicKey, secretKey } = generateKeypair();
   assert.match(publicKey, /^G[A-Z0-9]{55}$/);
   assert.match(secretKey, /^S[A-Z0-9]{55}$/);
-  // round-trips through stellar-sdk
   assert.equal(Keypair.fromSecret(secretKey).publicKey(), publicKey);
 });
 
@@ -117,7 +204,7 @@ test("signXdr signs a transaction with the given secret key", () => {
   const kp = Keypair.random();
   const account = new Account(kp.publicKey(), "1");
   const tx = new TransactionBuilder(account, { fee: "10000", networkPassphrase: NETWORK_PASSPHRASE })
-    .addOperation(Operation.payment({ destination: kp.publicKey(), asset: Operation as any, amount: "1" }))
+    .addOperation(Operation.payment({ destination: kp.publicKey(), asset: Asset.native(), amount: "1" }))
     .setTimeout(30)
     .build();
 
@@ -128,11 +215,9 @@ test("signXdr signs a transaction with the given secret key", () => {
 });
 ```
 
-Note: the payment operation's `asset` field in the test fixture is only there to build a syntactically valid transaction for signing — replace `Operation as any` with a real `Asset.native()` import from `@stellar/stellar-sdk` before running.
-
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd frontend && node --import tsx --test src/lib/wallet/keypair.test.ts` (add `tsx` as a devDependency: `npm install -D tsx`, and a `"test": "node --import tsx --test src/**/*.test.ts"` script to `package.json`)
+Run: `cd frontend && npm install -D tsx` then add `"test": "node --import tsx --test $(find src -name '*.test.ts')"` to `package.json`'s scripts, then `npm test -- src/lib/wallet/keypair.test.ts`
 Expected: FAIL with "Cannot find module './keypair.js'"
 
 - [ ] **Step 3: Write keypair.ts**
@@ -262,7 +347,7 @@ git commit -m "Add client-side wallet: keypair generation, XDR signing, pluggabl
 - Test: `frontend/src/lib/qris/parser.test.ts`
 
 **Interfaces:**
-- Produces: `parseQRIS(qrisString: string): QRISData` with `merchantName`, `merchantCity`, `method: "static" | "dynamic"`, `amount?`. Task 6 (scan page) calls this immediately after a camera scan for instant UI feedback, before the raw string is sent to `backend/`'s `POST /orders` (which parses it again server-side as the authoritative source — this duplication is intentional per the isolation boundary, not a shared-code shortcut).
+- Produces: `parseQRIS(qrisString: string): QRISData` with `merchantName`, `merchantCity`, `method: "static" | "dynamic"`, `amount?`. Task 7 (scan page) calls this immediately after a camera scan for instant UI feedback, before the raw string is sent to `backend/`'s `POST /orders` (which parses it again server-side as the authoritative source — this duplication is intentional per the isolation boundary, not a shared-code shortcut).
 
 This module is byte-identical in behavior to `backend/src/qris/*` (same plan, Task 3) — write it the same way:
 
@@ -611,15 +696,151 @@ git commit -m "Add typed backend API client"
 
 ---
 
-### Task 5: Onboarding page
+### Task 5: Design system primitives
+
+**Files:**
+- Create: `frontend/src/components/ui/PageShell.tsx`
+- Create: `frontend/src/components/ui/Card.tsx`
+- Create: `frontend/src/components/ui/Button.tsx`
+- Create: `frontend/src/components/ui/GradientBalanceCard.tsx`
+- Create: `frontend/src/components/ui/StatusPill.tsx`
+
+**Interfaces:**
+- Produces the shared visual vocabulary every page (Tasks 6-11) composes from — no page should hand-roll its own button/card styling. This is what makes six independently-built screens read as one coherent app.
+- No tests — these are pure presentational components with no business logic; correctness is verified visually (Task 6+'s manual checklists include a screenshot review).
+
+- [ ] **Step 1: Write PageShell.tsx**
+
+```tsx
+// frontend/src/components/ui/PageShell.tsx
+import type { ReactNode } from "react";
+
+export function PageShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative min-h-dvh overflow-x-hidden bg-paper text-ink">
+      <div className="liber-mesh" />
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-5 pb-28 pt-8">
+        {children}
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Write Card.tsx**
+
+```tsx
+// frontend/src/components/ui/Card.tsx
+import type { ReactNode } from "react";
+
+export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-3xl bg-white/90 p-5 shadow-[0_20px_45px_-25px_rgba(11,107,78,0.45)] ${className}`}>
+      {children}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Write Button.tsx**
+
+```tsx
+// frontend/src/components/ui/Button.tsx
+import type { ButtonHTMLAttributes } from "react";
+
+type Variant = "primary" | "secondary" | "ghost";
+
+const VARIANTS: Record<Variant, string> = {
+  primary: "bg-gold text-ink shadow-[0_12px_30px_-12px_rgba(231,163,58,0.65)]",
+  secondary: "bg-emerald text-white shadow-[0_12px_30px_-12px_rgba(11,107,78,0.6)]",
+  ghost: "border border-ink/15 bg-transparent text-ink",
+};
+
+export function Button({
+  variant = "primary",
+  className = "",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+  return (
+    <button
+      className={`w-full rounded-full px-6 py-4 text-base font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100 ${VARIANTS[variant]} ${className}`}
+      {...props}
+    />
+  );
+}
+```
+
+- [ ] **Step 4: Write GradientBalanceCard.tsx**
+
+```tsx
+// frontend/src/components/ui/GradientBalanceCard.tsx
+export function GradientBalanceCard({
+  usdcBalance,
+  idrEstimate,
+}: {
+  usdcBalance: string;
+  idrEstimate: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-emerald-deep via-emerald to-emerald-bright p-6 text-white shadow-[0_25px_50px_-20px_rgba(6,61,44,0.55)]">
+      <div className="absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+      <p className="font-display text-sm italic text-white/70">Saldo kamu</p>
+      <p className="mt-2 font-body text-4xl font-semibold tabular-nums">
+        {usdcBalance} <span className="text-lg font-normal text-white/70">USDC</span>
+      </p>
+      <p className="mt-1 text-sm text-white/70 tabular-nums">≈ Rp {Number(idrEstimate).toLocaleString("id-ID")}</p>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: Write StatusPill.tsx**
+
+```tsx
+// frontend/src/components/ui/StatusPill.tsx
+const STYLES: Record<string, string> = {
+  scanned: "bg-ink/5 text-ink/60",
+  quoted: "bg-ink/5 text-ink/60",
+  approved: "bg-gold/15 text-[#8a5c14]",
+  bridging: "bg-gold/15 text-[#8a5c14]",
+  redeeming: "bg-gold/15 text-[#8a5c14]",
+  completed: "bg-emerald/15 text-emerald-deep",
+  failed: "bg-rose/15 text-rose",
+};
+
+export function StatusPill({ state, label }: { state: string; label: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${STYLES[state] ?? STYLES.scanned}`}>
+      {label}
+    </span>
+  );
+}
+```
+
+- [ ] **Step 6: Verify visually**
+
+Run `npm run dev`, temporarily render `<PageShell><Card>Test</Card><Button>Test</Button></PageShell>` on the home route, confirm in a browser: the mesh gradient is visible behind the content, the card has a soft emerald-tinted shadow (not a flat grey border), and the button is a full-width gold pill. Remove the temporary render before moving on.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add frontend/src/components/ui/
+git commit -m "Add design system primitives: PageShell, Card, Button, GradientBalanceCard, StatusPill"
+```
+
+---
+
+### Task 6: Onboarding page
 
 **Files:**
 - Create: `frontend/src/app/onboarding/page.tsx`
 - Create: `frontend/src/components/OnboardingForm.tsx`
 
 **Interfaces:**
-- Consumes: `getOrCreateWallet`/`LocalStorageWalletStorage` (Task 2), `signXdr` (Task 2), `createUser`/`confirmTrustline` (Task 4).
-- Produces: on success, persists `userId` in `localStorage` under key `liber:userId` and redirects to `/`. Task 6 reads this key to know a user is onboarded.
+- Consumes: `getOrCreateWallet`/`LocalStorageWalletStorage` (Task 2), `signXdr` (Task 2), `createUser`/`confirmTrustline` (Task 4), `PageShell`/`Card`/`Button` (Task 5).
+- Produces: on success, persists `userId` in `localStorage` under key `liber:userId` and redirects to `/`. Task 7 reads this key to know a user is onboarded.
+
+**Visual intent:** the first thing a new user sees, so it carries the brand thesis. A `font-display italic` headline ("Uangmu, bebas berpindah.") above a short one-line subhead, then the form inside a `Card`. Provider selection (GoPay/DANA/OVO/lainnya) as a row of tappable pill chips rather than a plain `<select>` — this is the one place the "which e-wallet" choice deserves to feel tactile, not administrative. Inputs are full-width, `rounded-2xl`, a light `bg-paper` fill with no visible border until focused (focus ring in `emerald`). Submit button is the primary gold `Button`, sticky-ish at the natural bottom of the form (not fixed, this page scrolls).
 
 - [ ] **Step 1: Write OnboardingForm.tsx**
 
@@ -632,12 +853,25 @@ import { useRouter } from "next/navigation";
 import { getOrCreateWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 import { signXdr } from "@/lib/wallet/keypair";
 import { createUser, confirmTrustline } from "@/lib/api";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const USER_ID_KEY = "liber:userId";
 
+const PROVIDERS = [
+  { value: "gopay", label: "GoPay" },
+  { value: "dana", label: "DANA" },
+  { value: "ovo", label: "OVO" },
+  { value: "other", label: "Bank lain" },
+] as const;
+
+const inputClass =
+  "w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald";
+
 export function OnboardingForm() {
   const router = useRouter();
+  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>("gopay");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -662,7 +896,7 @@ export function OnboardingForm() {
         idFileBase64,
         bankAccountNumber: String(form.get("bankAccountNumber")),
         bankCode: String(form.get("bankCode")),
-        provider: form.get("provider") as "gopay" | "dana" | "ovo" | "other",
+        provider,
       });
 
       const signedXdr = signXdr(wallet.secretKey, unsignedTrustlineXdr, NETWORK_PASSPHRASE);
@@ -678,24 +912,44 @@ export function OnboardingForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-6 max-w-md mx-auto">
-      <input name="email" type="email" placeholder="Email" required className="border p-2 rounded" />
-      <input name="fullname" placeholder="Nama lengkap" required className="border p-2 rounded" />
-      <input name="address" placeholder="Alamat" required className="border p-2 rounded" />
-      <input name="idNumber" placeholder="NIK" required className="border p-2 rounded" />
-      <input name="idFile" type="file" accept="image/*" required className="border p-2 rounded" />
-      <select name="provider" required className="border p-2 rounded">
-        <option value="gopay">GoPay</option>
-        <option value="dana">DANA</option>
-        <option value="ovo">OVO</option>
-        <option value="other">Bank lain</option>
-      </select>
-      <input name="bankAccountNumber" placeholder="Nomor rekening/HP" required className="border p-2 rounded" />
-      <input name="bankCode" placeholder="Kode bank (mis. GOPAY)" required className="border p-2 rounded" />
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      <button type="submit" disabled={submitting} className="bg-slate-900 text-white p-2 rounded disabled:opacity-50">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-4">
+        <input name="email" type="email" placeholder="Email" required className={inputClass} />
+        <input name="fullname" placeholder="Nama lengkap" required className={inputClass} />
+        <input name="address" placeholder="Alamat" required className={inputClass} />
+        <input name="idNumber" placeholder="NIK" required className={inputClass} />
+        <label className="text-xs text-ink/60">
+          Foto KTP
+          <input name="idFile" type="file" accept="image/*" required className={`${inputClass} mt-1`} />
+        </label>
+
+        <div>
+          <p className="mb-2 text-xs font-medium text-ink/60">Terima Rupiah lewat</p>
+          <div className="flex flex-wrap gap-2">
+            {PROVIDERS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setProvider(p.value)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  provider === p.value ? "bg-emerald text-white" : "bg-paper text-ink/70"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <input name="bankAccountNumber" placeholder="Nomor rekening/HP" required className={inputClass} />
+        <input name="bankCode" placeholder="Kode bank (mis. GOPAY)" required className={inputClass} />
+      </Card>
+
+      {error && <p className="text-sm text-rose">{error}</p>}
+
+      <Button type="submit" disabled={submitting}>
         {submitting ? "Memproses..." : "Buat akun"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -705,14 +959,22 @@ export function OnboardingForm() {
 
 ```tsx
 // frontend/src/app/onboarding/page.tsx
+import { PageShell } from "@/components/ui/PageShell";
 import { OnboardingForm } from "@/components/OnboardingForm";
 
 export default function OnboardingPage() {
   return (
-    <main>
-      <h1 className="text-xl font-semibold text-center mt-8">Buat akun Liber</h1>
-      <OnboardingForm />
-    </main>
+    <PageShell>
+      <h1 className="font-display text-3xl leading-tight text-ink">
+        Uangmu, <span className="italic text-emerald">bebas berpindah.</span>
+      </h1>
+      <p className="mt-2 text-sm text-ink/60">
+        Terima gaji dari mana saja, bayar QRIS apa saja di Indonesia. Buat akun dalam satu langkah.
+      </p>
+      <div className="mt-6">
+        <OnboardingForm />
+      </div>
+    </PageShell>
   );
 }
 ```
@@ -721,10 +983,11 @@ export default function OnboardingPage() {
 
 Run `npm run dev`, open `http://localhost:3000/onboarding` on a phone or desktop browser with `backend/` running locally with a real `DATABASE_URL` and (for a real IDRX onboarding response) a valid `IDRX_API_KEY`/`IDRX_API_SECRET`:
 
-1. Fill every field, submit a real ID photo.
-2. Confirm no console error; confirm `localStorage.getItem("liber:userId")` is set (browser devtools).
-3. Confirm `backend/`'s Postgres `users` table has a new row with a non-null `idrx_deposit_address`.
-4. Confirm the Stellar account (`stellar_public_key`) is visible and funded on `stellar.expert` (mainnet) shortly after submission.
+1. Take a screenshot of the page before filling anything in. Confirm: the italic emerald headline word is visible, the provider chips are tappable pills (not a dropdown), the mesh gradient is visible behind the card.
+2. Fill every field, submit a real ID photo, tap a provider chip and confirm it visually highlights.
+3. Confirm no console error; confirm `localStorage.getItem("liber:userId")` is set (browser devtools).
+4. Confirm `backend/`'s Postgres `users` table has a new row with a non-null `idrx_deposit_address`.
+5. Confirm the Stellar account (`stellar_public_key`) is visible and funded on `stellar.expert` (mainnet) shortly after submission.
 
 - [ ] **Step 4: Commit**
 
@@ -735,7 +998,7 @@ git commit -m "Add onboarding page: wallet generation, KYC form, trustline signi
 
 ---
 
-### Task 6: Scan + quote page
+### Task 7: Scan + quote page
 
 **Files:**
 - Create: `frontend/src/app/pay/page.tsx`
@@ -743,8 +1006,10 @@ git commit -m "Add onboarding page: wallet generation, KYC form, trustline signi
 - Create: `frontend/src/components/QuoteCard.tsx`
 
 **Interfaces:**
-- Consumes: `parseQRIS` (Task 3), `createOrder` (Task 4).
-- Produces: on a successful quote, navigates to `/pay/[orderId]` (Task 7) carrying `unsignedBridgeXdr` via a client-side store (`sessionStorage`, key `liber:pendingBridgeXdr:{orderId}` — simplest way to hand a large string to the next page without a global state library).
+- Consumes: `parseQRIS` (Task 3), `createOrder` (Task 4), `PageShell`/`Card`/`Button` (Task 5).
+- Produces: on a successful quote, navigates to `/pay/[orderId]` (Task 8) carrying `unsignedBridgeXdr` via a client-side store (`sessionStorage`, key `liber:pendingBridgeXdr:{orderId}` — simplest way to hand a large string to the next page without a global state library).
+
+**Visual intent:** the camera view sits inside a rounded "viewfinder" frame with four corner brackets (a real scanner cue, not a bare video rectangle) so it reads as a deliberate scan tool, not a webcam demo. Once quoted, `QuoteCard` looks like a receipt: merchant name as an eyebrow label, the Rupiah amount as the dominant `font-display italic` numeral (this is the moment the "money" personality of the type pairing should show up most), the USDC equivalent smaller beneath it, and a slim countdown progress bar (not just text) ticking down under the amount.
 
 - [ ] **Step 1: Write QrScanner.tsx**
 
@@ -779,7 +1044,16 @@ export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
     };
   }, [onScan]);
 
-  return <div id={containerId} className="w-full max-w-sm mx-auto" />;
+  return (
+    <div className="relative mx-auto aspect-square w-full max-w-sm overflow-hidden rounded-[28px] bg-ink">
+      <div id={containerId} className="h-full w-full [&_video]:!h-full [&_video]:!w-full [&_video]:object-cover" />
+      {(["top-4 left-4 border-l-2 border-t-2", "top-4 right-4 border-r-2 border-t-2", "bottom-4 left-4 border-l-2 border-b-2", "bottom-4 right-4 border-r-2 border-b-2"] as const).map(
+        (pos) => (
+          <div key={pos} className={`pointer-events-none absolute h-8 w-8 rounded-sm border-emerald-bright ${pos}`} />
+        )
+      )}
+    </div>
+  );
 }
 ```
 
@@ -791,9 +1065,13 @@ export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
 
 import { useEffect, useState } from "react";
 import type { OrderQuote } from "@/lib/api";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+
+const QUOTE_WINDOW_SECONDS = 30;
 
 export function QuoteCard({ quote, onApprove }: { quote: OrderQuote; onApprove: () => void }) {
-  const [secondsLeft, setSecondsLeft] = useState(30);
+  const [secondsLeft, setSecondsLeft] = useState(QUOTE_WINDOW_SECONDS);
 
   useEffect(() => {
     const expiresAt = new Date(quote.quoteExpiresAt).getTime();
@@ -804,19 +1082,31 @@ export function QuoteCard({ quote, onApprove }: { quote: OrderQuote; onApprove: 
   }, [quote.quoteExpiresAt]);
 
   return (
-    <div className="p-6 max-w-sm mx-auto border rounded-lg">
-      <p className="text-sm text-slate-500">{quote.merchantName}, {quote.merchantCity}</p>
-      <p className="text-2xl font-bold">Rp {Number(quote.amountIdr).toLocaleString("id-ID")}</p>
-      <p className="text-slate-600">= {quote.amountUsdc} USDC</p>
-      <p className="text-xs text-slate-400 mt-2">Quote berlaku {secondsLeft} detik lagi</p>
-      <button
-        onClick={onApprove}
-        disabled={secondsLeft <= 0}
-        className="mt-4 w-full bg-slate-900 text-white p-2 rounded disabled:opacity-50"
-      >
+    <Card className="flex flex-col gap-4">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-ink/50">
+          {quote.merchantName} &middot; {quote.merchantCity}
+        </p>
+        <p className="mt-2 font-display text-4xl italic text-ink tabular-nums">
+          Rp {Number(quote.amountIdr).toLocaleString("id-ID")}
+        </p>
+        <p className="mt-1 text-sm text-ink/60 tabular-nums">setara {quote.amountUsdc} USDC</p>
+      </div>
+
+      <div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink/10">
+          <div
+            className="h-full rounded-full bg-emerald transition-[width] duration-500"
+            style={{ width: `${(secondsLeft / QUOTE_WINDOW_SECONDS) * 100}%` }}
+          />
+        </div>
+        <p className="mt-1 text-xs text-ink/40">Kuotasi berlaku {secondsLeft} detik lagi</p>
+      </div>
+
+      <Button onClick={onApprove} disabled={secondsLeft <= 0}>
         Bayar sekarang
-      </button>
-    </div>
+      </Button>
+    </Card>
   );
 }
 ```
@@ -829,6 +1119,7 @@ export function QuoteCard({ quote, onApprove }: { quote: OrderQuote; onApprove: 
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PageShell } from "@/components/ui/PageShell";
 import { QrScanner } from "@/components/QrScanner";
 import { QuoteCard } from "@/components/QuoteCard";
 import { parseQRIS } from "@/lib/qris/parser";
@@ -843,7 +1134,7 @@ export default function PayPage() {
     try {
       const parsed = parseQRIS(qrContent);
       const userId = window.localStorage.getItem("liber:userId");
-      if (!userId) throw new Error("Belum onboarding — buka /onboarding dulu");
+      if (!userId) throw new Error("Belum onboarding. Buka /onboarding dulu.");
 
       let amountIdr: number | undefined;
       if (!parsed.amount) {
@@ -861,11 +1152,14 @@ export default function PayPage() {
   }
 
   return (
-    <main className="p-4">
-      {!quote && <QrScanner onScan={handleScan} />}
-      {error && <p className="text-red-600 text-center mt-4">{error}</p>}
-      {quote && <QuoteCard quote={quote} onApprove={() => router.push(`/pay/${quote.orderId}`)} />}
-    </main>
+    <PageShell>
+      <h1 className="font-display text-2xl italic text-ink">Scan QRIS</h1>
+      <div className="mt-6">
+        {!quote && <QrScanner onScan={handleScan} />}
+        {error && <p className="mt-4 text-center text-sm text-rose">{error}</p>}
+        {quote && <QuoteCard quote={quote} onApprove={() => router.push(`/pay/${quote.orderId}`)} />}
+      </div>
+    </PageShell>
   );
 }
 ```
@@ -874,10 +1168,11 @@ export default function PayPage() {
 
 On a real phone (camera access requires HTTPS or `localhost`):
 
-1. Open `/pay`, grant camera permission, scan a real static QRIS (e.g. print one from `qris-dinamis`'s demo or any real merchant QRIS with a known small amount).
-2. Confirm merchant name/city appear correctly.
-3. For a static QRIS, confirm the nominal prompt appears and the resulting quote reflects it.
-4. Confirm the 30-second countdown ticks down and disables the button at 0.
+1. Open `/pay`, grant camera permission, confirm the corner-bracket viewfinder frame renders around the camera feed.
+2. Scan a real static QRIS (e.g. print one from `qris-dinamis`'s demo or any real merchant QRIS with a known small amount).
+3. Confirm merchant name/city appear correctly, and the Rupiah amount renders large in the italic display font.
+4. For a static QRIS, confirm the nominal prompt appears and the resulting quote reflects it.
+5. Confirm the countdown progress bar visibly shrinks over 30 seconds and the button disables at 0.
 
 - [ ] **Step 5: Commit**
 
@@ -888,15 +1183,17 @@ git commit -m "Add scan + quote page (camera QRIS scan, EMVCo parse, backend quo
 
 ---
 
-### Task 7: Approve + status page
+### Task 8: Approve + status page
 
 **Files:**
 - Create: `frontend/src/app/pay/[orderId]/page.tsx`
 - Create: `frontend/src/components/OrderStatus.tsx`
 
 **Interfaces:**
-- Consumes: `signXdr` + `LocalStorageWalletStorage`/`getOrCreateWallet` (Task 2), `approveOrder`/`getOrder` (Task 4).
-- Produces: polls until `state` is `"completed"` or `"failed"`, then renders the handoff (Task 8's UI, inlined here since it's the terminal state of the same page rather than a separate route).
+- Consumes: `signXdr` + `LocalStorageWalletStorage`/`getOrCreateWallet` (Task 2), `approveOrder`/`getOrder` (Task 4), `PageShell`/`Card`/`Button`/`StatusPill` (Task 5).
+- Produces: polls until `state` is `"completed"` or `"failed"`, then renders the handoff (the terminal state of the same page, not a separate route).
+
+**Visual intent:** this page is live for minutes (the bridge takes real time per spec §7), so it needs to feel like progress, not a stuck spinner. A vertical stepper (Approve, Bridging, Redeeming, Selesai) with a `StatusPill` marking the current step and a thin connecting line that fills in emerald as steps complete. On completion, the re-displayed QR sits in a bordered card that visually echoes the scan viewfinder from Task 7 (same rounded-corner treatment) so it reads as "the same QR, now for your own e-wallet."
 
 - [ ] **Step 1: Write OrderStatus.tsx**
 
@@ -904,16 +1201,26 @@ git commit -m "Add scan + quote page (camera QRIS scan, EMVCo parse, backend quo
 // frontend/src/components/OrderStatus.tsx
 "use client";
 
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { getOrder, type OrderStatus as OrderStatusData } from "@/lib/api";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { StatusPill } from "@/components/ui/StatusPill";
 
-const STATE_LABELS: Record<string, string> = {
-  bridging: "Mengirim USDC lintas rantai...",
-  redeeming: "Mencairkan ke Rupiah...",
-  completed: "Selesai — bayar merchant sekarang",
-  failed: "Gagal",
+const STEPS = [
+  { key: "approved", label: "Disetujui" },
+  { key: "bridging", label: "Mengirim USDC lintas rantai" },
+  { key: "redeeming", label: "Mencairkan ke Rupiah" },
+  { key: "completed", label: "Selesai" },
+] as const;
+
+const STEP_INDEX: Record<string, number> = {
+  approved: 0,
+  bridging: 1,
+  redeeming: 2,
+  completed: 3,
+  failed: 3,
 };
 
 export function OrderStatus({ orderId }: { orderId: string }) {
@@ -937,28 +1244,55 @@ export function OrderStatus({ orderId }: { orderId: string }) {
     }
   }, [status]);
 
-  if (!status) return <p className="text-center mt-8">Memuat status...</p>;
+  if (!status) {
+    return <p className="mt-8 text-center text-sm text-ink/60">Memuat status...</p>;
+  }
+
+  const currentIndex = STEP_INDEX[status.state] ?? 0;
 
   return (
-    <div className="p-6 max-w-sm mx-auto text-center">
-      <p className="text-lg font-semibold">{STATE_LABELS[status.state] ?? status.state}</p>
-      {status.state === "failed" && <p className="text-red-600 mt-2">{status.failureReason}</p>}
+    <div className="flex flex-col gap-5">
+      <Card>
+        <ol className="flex flex-col gap-4">
+          {STEPS.map((step, i) => (
+            <li key={step.key} className="flex items-center gap-3">
+              <span
+                className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                  i <= currentIndex ? "bg-emerald" : "bg-ink/15"
+                }`}
+              />
+              <span className={`text-sm ${i <= currentIndex ? "text-ink" : "text-ink/40"}`}>{step.label}</span>
+            </li>
+          ))}
+        </ol>
+        {status.state === "failed" && (
+          <div className="mt-4">
+            <StatusPill state="failed" label="Gagal" />
+            <p className="mt-2 text-sm text-rose">{status.failureReason}</p>
+          </div>
+        )}
+      </Card>
 
       {status.state === "completed" && (
-        <>
-          <p className="mt-4 text-sm text-slate-500">
-            Saldo {status.merchantName} sudah masuk ke e-wallet kamu. Scan ulang QRIS ini dari aplikasi e-wallet untuk membayar merchant:
+        <Card className="flex flex-col items-center gap-4 text-center">
+          <StatusPill state="completed" label="Siap dibayar" />
+          <p className="text-sm text-ink/60">
+            Saldo di e-wallet kamu sudah bertambah. Scan ulang QRIS {status.merchantName} ini dari aplikasi e-wallet untuk membayar merchant.
           </p>
-          {qrDataUrl && <Image src={qrDataUrl} alt="QRIS" width={220} height={220} className="mx-auto mt-4" />}
+          {qrDataUrl && (
+            <div className="rounded-3xl bg-ink p-4">
+              <img src={qrDataUrl} alt="QRIS" width={200} height={200} />
+            </div>
+          )}
           {status.ewalletHandoff.appLink && (
-            <a href={status.ewalletHandoff.appLink} className="block mt-4 bg-slate-900 text-white p-2 rounded">
-              Buka e-wallet
+            <a href={status.ewalletHandoff.appLink} className="w-full">
+              <Button variant="secondary">Buka e-wallet</Button>
             </a>
           )}
           {status.stellarTxHash && (
-            <p className="text-xs text-slate-400 mt-4 break-all">Tx: {status.stellarTxHash}</p>
+            <p className="break-all text-xs text-ink/40">Tx: {status.stellarTxHash}</p>
           )}
-        </>
+        </Card>
       )}
     </div>
   );
@@ -973,6 +1307,7 @@ export function OrderStatus({ orderId }: { orderId: string }) {
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { PageShell } from "@/components/ui/PageShell";
 import { getOrCreateWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 import { signXdr } from "@/lib/wallet/keypair";
 import { approveOrder } from "@/lib/api";
@@ -989,7 +1324,7 @@ export default function OrderPage() {
     async function approve() {
       try {
         const unsignedXdr = window.sessionStorage.getItem(`liber:pendingBridgeXdr:${orderId}`);
-        if (!unsignedXdr) throw new Error("Sesi kadaluarsa, scan ulang QRIS-nya");
+        if (!unsignedXdr) throw new Error("Sesi kadaluarsa, scan ulang QRIS-nya.");
 
         const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
         const signedXdr = signXdr(wallet.secretKey, unsignedXdr, NETWORK_PASSPHRASE);
@@ -1002,10 +1337,16 @@ export default function OrderPage() {
     approve();
   }, [orderId]);
 
-  if (error) return <p className="text-red-600 text-center mt-8">{error}</p>;
-  if (!approved) return <p className="text-center mt-8">Menandatangani transaksi...</p>;
-
-  return <OrderStatus orderId={orderId} />;
+  return (
+    <PageShell>
+      <h1 className="font-display text-2xl italic text-ink">Status pembayaran</h1>
+      <div className="mt-6">
+        {error && <p className="text-center text-sm text-rose">{error}</p>}
+        {!error && !approved && <p className="text-center text-sm text-ink/60">Menandatangani transaksi...</p>}
+        {!error && approved && <OrderStatus orderId={orderId} />}
+      </div>
+    </PageShell>
+  );
 }
 ```
 
@@ -1013,10 +1354,10 @@ export default function OrderPage() {
 
 With `backend/` pointed at real mainnet config and a small real USDC balance in the test wallet:
 
-1. Complete a scan+quote (Task 6), land on `/pay/[orderId]`.
-2. Confirm the transaction signs without error and the page transitions to "Mengirim USDC lintas rantai...".
-3. Wait for the Allbridge bridge to confirm (per spec, ~minutes) — confirm the label changes to "Mencairkan ke Rupiah..." then "Selesai".
-4. Confirm the QR image renders and matches the originally scanned QRIS (open both side by side).
+1. Complete a scan+quote (Task 7), land on `/pay/[orderId]`.
+2. Confirm the transaction signs without error and the stepper shows "Disetujui" then advances to "Mengirim USDC lintas rantai" with the emerald dot progression.
+3. Wait for the Allbridge bridge to confirm (per spec, ~minutes) — confirm the stepper advances to "Mencairkan ke Rupiah" then "Selesai".
+4. Confirm the QR image renders in the dark card and matches the originally scanned QRIS (open both side by side).
 5. Confirm tapping "Buka e-wallet" attempts to open the app (or no-ops harmlessly if the scheme isn't registered on the test device — this is expected per spec §10.3, the QR re-scan is the real mechanism).
 
 - [ ] **Step 4: Commit**
@@ -1028,44 +1369,18 @@ git commit -m "Add approve + status page: sign bridge tx, poll status, e-wallet 
 
 ---
 
-### Task 8: Balance + home page
+### Task 9: Balance + home page
 
 **Files:**
 - Create: `frontend/src/app/page.tsx`
-- Create: `frontend/src/components/BalanceCard.tsx`
 
 **Interfaces:**
-- Consumes: `getBalance` (Task 4).
-- Produces: the app's landing page — redirects to `/onboarding` if no `liber:userId` is set, otherwise shows balance + a link to `/pay`.
+- Consumes: `getBalance` (Task 4), `PageShell`/`GradientBalanceCard`/`Button` (Task 5).
+- Produces: the app's landing page — redirects to `/onboarding` if no `liber:userId` is set, otherwise shows balance + navigation to scan/receive/history.
 
-- [ ] **Step 1: Write BalanceCard.tsx**
+**Visual intent:** this is the screen a returning user sees every day, so it's where `GradientBalanceCard` gets its full hero treatment at the top. Below it, two large action tiles side by side (Scan QRIS as the gold primary action since it's the core feature, Terima USDC as a secondary outline tile), then a quiet text link to history beneath, not competing for attention.
 
-```tsx
-// frontend/src/components/BalanceCard.tsx
-"use client";
-
-import { useEffect, useState } from "react";
-import { getBalance } from "@/lib/api";
-
-export function BalanceCard({ userId }: { userId: string }) {
-  const [balance, setBalance] = useState<{ usdcBalance: string; idrEstimate: string } | null>(null);
-
-  useEffect(() => {
-    getBalance(userId).then(setBalance).catch(() => setBalance(null));
-  }, [userId]);
-
-  if (!balance) return <p className="text-center mt-8">Memuat saldo...</p>;
-
-  return (
-    <div className="p-6 max-w-sm mx-auto text-center">
-      <p className="text-3xl font-bold">{balance.usdcBalance} USDC</p>
-      <p className="text-slate-500">≈ Rp {Number(balance.idrEstimate).toLocaleString("id-ID")}</p>
-    </div>
-  );
-}
-```
-
-- [ ] **Step 2: Write page.tsx**
+- [ ] **Step 1: Write page.tsx**
 
 ```tsx
 // frontend/src/app/page.tsx
@@ -1074,57 +1389,88 @@ export function BalanceCard({ userId }: { userId: string }) {
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BalanceCard } from "@/components/BalanceCard";
+import { PageShell } from "@/components/ui/PageShell";
+import { GradientBalanceCard } from "@/components/ui/GradientBalanceCard";
+import { getBalance } from "@/lib/api";
 
 export default function HomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
+  const [balance, setBalance] = useState<{ usdcBalance: string; idrEstimate: string } | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("liber:userId");
     if (!stored) {
       router.push("/onboarding");
-    } else {
-      setUserId(stored);
+      return;
     }
+    setUserId(stored);
+    getBalance(stored).then(setBalance).catch(() => setBalance({ usdcBalance: "0.00", idrEstimate: "0" }));
   }, [router]);
 
   if (!userId) return null;
 
   return (
-    <main>
-      <BalanceCard userId={userId} />
-      <Link href="/pay" className="block mt-6 mx-auto max-w-sm bg-slate-900 text-white p-3 rounded text-center">
-        Scan QRIS
+    <PageShell>
+      <p className="font-display text-lg italic text-ink/70">Halo,</p>
+      <h1 className="font-display text-2xl text-ink">selamat datang kembali.</h1>
+
+      <div className="mt-6">
+        {balance ? (
+          <GradientBalanceCard usdcBalance={balance.usdcBalance} idrEstimate={balance.idrEstimate} />
+        ) : (
+          <div className="h-40 animate-pulse rounded-[28px] bg-ink/5" />
+        )}
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-3">
+        <Link
+          href="/pay"
+          className="flex flex-col items-center justify-center gap-2 rounded-3xl bg-gold p-5 text-center font-semibold text-ink shadow-[0_12px_30px_-12px_rgba(231,163,58,0.65)]"
+        >
+          Scan QRIS
+        </Link>
+        <Link
+          href="/receive"
+          className="flex flex-col items-center justify-center gap-2 rounded-3xl border border-ink/15 p-5 text-center font-semibold text-ink"
+        >
+          Terima USDC
+        </Link>
+      </div>
+
+      <Link href="/history" className="mt-6 text-center text-sm text-ink/50 underline underline-offset-4">
+        Lihat riwayat transaksi
       </Link>
-    </main>
+    </PageShell>
   );
 }
 ```
 
-- [ ] **Step 3: Manual verification checklist**
+- [ ] **Step 2: Manual verification checklist**
 
 1. Clear `localStorage`, open `/` — confirm redirect to `/onboarding`.
-2. Complete onboarding, land back on `/` — confirm balance loads (0 USDC / Rp 0 for a freshly funded account with no USDC yet).
+2. Complete onboarding, land back on `/` — confirm the `GradientBalanceCard` renders (0 USDC / Rp 0 for a freshly funded account with no USDC yet), and take a screenshot to confirm the emerald gradient, italic label, and tabular-nums balance figure all render as designed.
 3. Send a small amount of real USDC to the displayed account (manually, via any Stellar wallet) and refresh — confirm the balance updates.
-4. Tap "Scan QRIS" — confirm navigation to `/pay`.
+4. Tap "Scan QRIS" and "Terima USDC" tiles — confirm both navigate correctly.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add frontend/src/app/page.tsx frontend/src/components/BalanceCard.tsx
-git commit -m "Add home page: balance display + onboarding redirect"
+git add frontend/src/app/page.tsx
+git commit -m "Add home page: gradient balance card + navigation"
 ```
 
 ---
 
-### Task 9: Receive page (own address + QR)
+### Task 10: Receive page (own address + QR)
 
 **Files:**
 - Create: `frontend/src/app/receive/page.tsx`
 
 **Interfaces:**
-- Consumes: `getOrCreateWallet`/`LocalStorageWalletStorage` (Task 2). Covers the "Terima USDC" MVP feature (`LIBER-CONCEPT.md` §4 item 2) — a way for the user to receive USDC/salary transfers into their Liber wallet from outside the app.
+- Consumes: `getOrCreateWallet`/`LocalStorageWalletStorage` (Task 2), `PageShell`/`Card`/`Button` (Task 5). Covers the "Terima USDC" MVP feature (`LIBER-CONCEPT.md` §4 item 2) — a way for the user to receive USDC/salary transfers into their Liber wallet from outside the app.
+
+**Visual intent:** mirrors the scan viewfinder's dark rounded frame (Task 7) but displaying a QR to show, not a camera to scan, visually pairing the two "QR moments" in the app. The address sits below in a monospace pill with a one-tap copy affordance.
 
 - [ ] **Step 1: Write receive/page.tsx**
 
@@ -1134,6 +1480,9 @@ git commit -m "Add home page: balance display + onboarding redirect"
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { getOrCreateWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 
 export default function ReceivePage() {
@@ -1148,62 +1497,59 @@ export default function ReceivePage() {
     });
   }, []);
 
-  if (!address) return <p className="text-center mt-8">Memuat alamat...</p>;
+  if (!address) return <p className="mt-8 text-center text-sm text-ink/60">Memuat alamat...</p>;
 
   return (
-    <main className="p-6 max-w-sm mx-auto text-center">
-      <h1 className="text-lg font-semibold mb-4">Terima USDC</h1>
-      <img src={qrDataUrl} alt="Alamat Stellar" width={220} height={220} className="mx-auto" />
-      <p className="text-xs break-all mt-4 font-mono">{address}</p>
-      <button
-        onClick={() => {
-          navigator.clipboard.writeText(address);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        }}
-        className="mt-4 bg-slate-900 text-white p-2 rounded w-full"
-      >
-        {copied ? "Tersalin!" : "Salin alamat"}
-      </button>
-      <p className="text-xs text-slate-400 mt-4">
-        Kirim USDC (Stellar) ke alamat ini. Saldo akan muncul di halaman utama setelah transaksi selesai.
-      </p>
-    </main>
+    <PageShell>
+      <h1 className="font-display text-2xl italic text-ink">Terima USDC</h1>
+      <Card className="mt-6 flex flex-col items-center gap-4 text-center">
+        <div className="rounded-3xl bg-ink p-4">
+          {qrDataUrl && <img src={qrDataUrl} alt="Alamat Stellar" width={200} height={200} />}
+        </div>
+        <p className="break-all rounded-2xl bg-paper px-4 py-3 font-mono text-xs text-ink/70">{address}</p>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            navigator.clipboard.writeText(address);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+        >
+          {copied ? "Tersalin." : "Salin alamat"}
+        </Button>
+        <p className="text-xs text-ink/40">
+          Kirim USDC (Stellar) ke alamat ini. Saldo muncul di halaman utama setelah transaksi selesai.
+        </p>
+      </Card>
+    </PageShell>
   );
 }
 ```
 
-- [ ] **Step 2: Add a link from the home page**
+- [ ] **Step 2: Manual verification checklist**
 
-```tsx
-// frontend/src/app/page.tsx (modify — add alongside the existing "Scan QRIS" link)
-<Link href="/receive" className="block mt-3 mx-auto max-w-sm border border-slate-900 text-slate-900 p-3 rounded text-center">
-  Terima USDC
-</Link>
-```
-
-- [ ] **Step 3: Manual verification checklist**
-
-1. Open `/receive`, confirm the QR renders and the address text matches `localStorage`'s `liber:wallet:publicKey`.
+1. Open `/receive`, confirm the QR renders inside the dark card and the address text matches `localStorage`'s `liber:wallet:publicKey`.
 2. Scan the QR with a separate Stellar wallet app — confirm it reads as a valid `G...` address.
 3. Send a small amount of real USDC to it from another wallet, then check `/` — confirm the balance updates.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add frontend/src/app/receive/ frontend/src/app/page.tsx
+git add frontend/src/app/receive/
 git commit -m "Add receive page: show wallet address as QR for incoming USDC"
 ```
 
 ---
 
-### Task 10: Transaction history page
+### Task 11: Transaction history page
 
 **Files:**
 - Create: `frontend/src/app/history/page.tsx`
 
 **Interfaces:**
-- Consumes: `getOrderHistory` (Task 4). Covers the "Riwayat transaksi" MVP feature (`LIBER-CONCEPT.md` §4 item 4) — a receipt list with merchant name and tx hash as on-chain proof.
+- Consumes: `getOrderHistory` (Task 4), `PageShell`/`Card`/`StatusPill` (Task 5). Covers the "Riwayat transaksi" MVP feature (`LIBER-CONCEPT.md` §4 item 4) — a receipt list with merchant name and tx hash as on-chain proof.
+
+**Visual intent:** each entry reads like a receipt stub, not a table row: merchant name prominent, a `StatusPill` for state (color-coded per Task 5's palette), Rupiah amount in tabular numerals, and the tx hash truncated (`0x1234...abcd` style) rather than wrapped across lines.
 
 - [ ] **Step 1: Write history/page.tsx**
 
@@ -1212,7 +1558,24 @@ git commit -m "Add receive page: show wallet address as QR for incoming USDC"
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { getOrderHistory, type HistoryEntry } from "@/lib/api";
+
+const STATE_LABELS: Record<string, string> = {
+  scanned: "Diproses",
+  quoted: "Diproses",
+  approved: "Diproses",
+  bridging: "Diproses",
+  redeeming: "Diproses",
+  completed: "Selesai",
+  failed: "Gagal",
+};
+
+function truncateHash(hash: string): string {
+  return hash.length > 14 ? `${hash.slice(0, 8)}...${hash.slice(-6)}` : hash;
+}
 
 export default function HistoryPage() {
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
@@ -1222,64 +1585,56 @@ export default function HistoryPage() {
     if (userId) getOrderHistory(userId).then(setEntries);
   }, []);
 
-  if (!entries) return <p className="text-center mt-8">Memuat riwayat...</p>;
-  if (entries.length === 0) return <p className="text-center mt-8 text-slate-500">Belum ada transaksi</p>;
-
   return (
-    <main className="p-4 max-w-sm mx-auto">
-      <h1 className="text-lg font-semibold mb-4 text-center">Riwayat transaksi</h1>
-      <ul className="flex flex-col gap-3">
-        {entries.map((entry) => (
-          <li key={entry.orderId} className="border rounded-lg p-4">
-            <div className="flex justify-between">
-              <span className="font-medium">{entry.merchantName}</span>
-              <span className={entry.state === "completed" ? "text-green-600" : "text-slate-500"}>
-                {entry.state}
-              </span>
-            </div>
-            <p className="text-sm text-slate-500">{entry.merchantCity}</p>
-            <p className="text-sm">
-              Rp {Number(entry.amountIdr).toLocaleString("id-ID")} ({entry.amountUsdc} USDC)
-            </p>
-            {entry.stellarTxHash && (
-              <p className="text-xs text-slate-400 mt-1 break-all">Tx: {entry.stellarTxHash}</p>
-            )}
-            <p className="text-xs text-slate-400">{new Date(entry.createdAt).toLocaleString("id-ID")}</p>
+    <PageShell>
+      <h1 className="font-display text-2xl italic text-ink">Riwayat transaksi</h1>
+
+      {!entries && <p className="mt-8 text-center text-sm text-ink/60">Memuat riwayat...</p>}
+      {entries?.length === 0 && <p className="mt-8 text-center text-sm text-ink/40">Belum ada transaksi.</p>}
+
+      <ul className="mt-6 flex flex-col gap-3">
+        {entries?.map((entry) => (
+          <li key={entry.orderId}>
+            <Card className="flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-3">
+                <span className="font-medium text-ink">{entry.merchantName}</span>
+                <StatusPill state={entry.state} label={STATE_LABELS[entry.state] ?? entry.state} />
+              </div>
+              <p className="text-xs text-ink/50">{entry.merchantCity}</p>
+              <p className="text-sm tabular-nums text-ink/80">
+                Rp {Number(entry.amountIdr).toLocaleString("id-ID")} &middot; {entry.amountUsdc} USDC
+              </p>
+              {entry.stellarTxHash && (
+                <p className="font-mono text-xs text-ink/40">Tx: {truncateHash(entry.stellarTxHash)}</p>
+              )}
+              <p className="text-xs text-ink/30">{new Date(entry.createdAt).toLocaleString("id-ID")}</p>
+            </Card>
           </li>
         ))}
       </ul>
-    </main>
+    </PageShell>
   );
 }
 ```
 
-- [ ] **Step 2: Add a link from the home page**
+- [ ] **Step 2: Manual verification checklist**
 
-```tsx
-// frontend/src/app/page.tsx (modify — add alongside the "Scan QRIS"/"Terima USDC" links)
-<Link href="/history" className="block mt-3 mx-auto max-w-sm text-slate-500 text-center underline">
-  Riwayat transaksi
-</Link>
-```
+1. Complete at least one full scan-to-pay flow (Tasks 7-8).
+2. Open `/history`, confirm the completed order appears with a `StatusPill` and correct merchant name, amount, and truncated tx hash.
+3. Confirm the tx hash (expand it in devtools or hover) matches what's visible on `stellar.expert` for that account.
 
-- [ ] **Step 3: Manual verification checklist**
-
-1. Complete at least one full scan-to-pay flow (Tasks 6-7).
-2. Open `/history`, confirm the completed order appears with correct merchant name, amount, and tx hash.
-3. Confirm the tx hash matches what's visible on `stellar.expert` for that account.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add frontend/src/app/history/ frontend/src/app/page.tsx
-git commit -m "Add transaction history page (receipts with merchant name + tx hash)"
+git add frontend/src/app/history/
+git commit -m "Add transaction history page (receipts with StatusPill + tx hash)"
 ```
 
 ---
 
 ## Deployment (Vercel)
 
-After Task 8 is verified:
+After Task 11 is verified:
 
 ```bash
 cd frontend
