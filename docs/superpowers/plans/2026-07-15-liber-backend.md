@@ -577,14 +577,8 @@ export interface Quote {
   expiresAt: Date;
 }
 
-export async function getQuote(
-  amountIdr: number,
-  deps: { fetchImpl?: typeof fetch; now?: () => Date } = {}
-): Promise<Quote> {
-  const fetchImpl = deps.fetchImpl ?? fetch;
-  const now = deps.now ?? (() => new Date());
+export async function getRateIdrPerUsdc(fetchImpl: typeof fetch = fetch): Promise<number> {
   const baseUrl = process.env.COINGECKO_API_URL ?? "https://api.coingecko.com/api/v3";
-
   const res = await fetchImpl(`${baseUrl}/simple/price?ids=usd-coin&vs_currencies=idr`);
   const body = (await res.json()) as { "usd-coin"?: { idr?: number } };
   const rate = body["usd-coin"]?.idr;
@@ -592,7 +586,15 @@ export async function getQuote(
   if (!rate) {
     throw new Error("CoinGecko response missing usd-coin.idr rate");
   }
+  return rate;
+}
 
+export async function getQuote(
+  amountIdr: number,
+  deps: { fetchImpl?: typeof fetch; now?: () => Date } = {}
+): Promise<Quote> {
+  const now = deps.now ?? (() => new Date());
+  const rate = await getRateIdrPerUsdc(deps.fetchImpl);
   const amountUsdc = (amountIdr / rate) * (1 + SPREAD);
 
   return {
@@ -1935,6 +1937,117 @@ Expected: PASS (all tests, all tasks)
 ```bash
 git add backend/src/routes/users.ts backend/src/app.ts
 git commit -m "Add user onboarding route: IDRX onboarding + bank account + Stellar account funding"
+```
+
+---
+
+### Task 13: Balance route
+
+**Files:**
+- Create: `backend/src/routes/balance.ts`
+- Modify: `backend/src/app.ts`
+- Test: `backend/src/routes/balance.test.ts`
+
+**Interfaces:**
+- Consumes: `getRateIdrPerUsdc` (Task 4).
+- Produces: `GET /users/:id/balance` → `200 { usdcBalance: string, idrEstimate: string }`. This is the only place `frontend/` learns the user's balance — per the boundary rule, it never queries Horizon directly.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+// backend/src/routes/balance.test.ts
+import { test, mock, before } from "node:test";
+import assert from "node:assert/strict";
+import { createApp } from "../app.js";
+import { getPool } from "../db/pool.js";
+import { migrate } from "../db/migrate.js";
+import * as quote from "../quote/quote.js";
+import * as horizon from "./balance.js";
+
+before(async () => {
+  await migrate();
+});
+
+test("GET /users/:id/balance returns USDC balance and an IDR estimate", async () => {
+  const { rows } = await getPool().query(
+    `INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`,
+    ["GBALANCEUSER..."]
+  );
+  const userId = rows[0].id;
+
+  mock.method(horizon, "loadUsdcBalance", async () => "12.5");
+  mock.method(quote, "getRateIdrPerUsdc", async () => 16000);
+
+  const app = createApp();
+  const res = await app.request(`/users/${userId}/balance`);
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { usdcBalance: "12.5", idrEstimate: "200000" });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `DATABASE_URL=postgres://localhost/liber npm test -- src/routes/balance.test.ts`
+Expected: FAIL with "Cannot find module './balance.js'"
+
+- [ ] **Step 3: Write routes/balance.ts**
+
+```typescript
+// backend/src/routes/balance.ts
+import { Hono } from "hono";
+import { Horizon } from "@stellar/stellar-sdk";
+import { getPool } from "../db/pool.js";
+import { getRateIdrPerUsdc } from "../quote/quote.js";
+
+export const balanceRoute = new Hono();
+
+export async function loadUsdcBalance(stellarPublicKey: string): Promise<string> {
+  const server = new Horizon.Server(process.env.HORIZON_URL ?? "https://horizon.stellar.org");
+  const account = await server.loadAccount(stellarPublicKey);
+  const usdcLine = account.balances.find(
+    (b): b is Horizon.HorizonApi.BalanceLineAsset =>
+      "asset_code" in b && b.asset_code === "USDC" && b.asset_issuer === process.env.USDC_ISSUER
+  );
+  return usdcLine?.balance ?? "0";
+}
+
+balanceRoute.get("/users/:id/balance", async (c) => {
+  const { rows } = await getPool().query(`SELECT stellar_public_key FROM users WHERE id = $1`, [c.req.param("id")]);
+  const user = rows[0];
+  if (!user) return c.json({ error: "user not found" }, 404);
+
+  const [usdcBalance, rate] = await Promise.all([
+    loadUsdcBalance(user.stellar_public_key),
+    getRateIdrPerUsdc(),
+  ]);
+
+  return c.json({
+    usdcBalance,
+    idrEstimate: Math.round(Number(usdcBalance) * rate).toString(),
+  });
+});
+```
+
+- [ ] **Step 4: Mount the route**
+
+```typescript
+// backend/src/app.ts (modify)
+import { balanceRoute } from "./routes/balance.js";
+// ...
+app.route("/", balanceRoute);
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `DATABASE_URL=postgres://localhost/liber npm test -- src/routes/balance.test.ts`
+Expected: PASS
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/src/routes/balance.ts backend/src/app.ts
+git commit -m "Add balance route (USDC balance + IDR estimate via CoinGecko rate)"
 ```
 
 ---
