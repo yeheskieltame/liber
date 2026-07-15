@@ -10,8 +10,7 @@ const STATE_LABELS: Record<string, string> = {
   scanned: "Diproses",
   quoted: "Diproses",
   approved: "Diproses",
-  bridging: "Diproses",
-  redeeming: "Diproses",
+  awaiting_settlement: "Diproses",
   completed: "Selesai",
   failed: "Gagal",
 };

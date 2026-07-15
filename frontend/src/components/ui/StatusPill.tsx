@@ -2,8 +2,7 @@ const STYLES: Record<string, string> = {
   scanned: "bg-ink/5 text-ink/60",
   quoted: "bg-ink/5 text-ink/60",
   approved: "bg-gold/15 text-gold-deep",
-  bridging: "bg-gold/15 text-gold-deep",
-  redeeming: "bg-gold/15 text-gold-deep",
+  awaiting_settlement: "bg-gold/15 text-gold-deep",
   completed: "bg-emerald/15 text-emerald-deep",
   failed: "bg-rose/15 text-rose",
 };
