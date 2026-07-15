@@ -4,29 +4,43 @@ import { getPool } from "../db/pool.js";
 
 export const historyRoute = new Hono();
 
-historyRoute.get("/users/:id/orders", async (c) => {
+historyRoute.get("/users/:id/history", async (c) => {
   const userId = c.req.param("id");
 
-  // Check that user exists
   const { rows: userRows } = await getPool().query(`SELECT id FROM users WHERE id = $1`, [userId]);
   if (!userRows[0]) return c.json({ error: "user not found" }, 404);
 
-  const { rows } = await getPool().query(
-    `SELECT id, merchant_name, merchant_city, amount_idr, amount_usdc, state, stellar_tx_hash, created_at
-     FROM orders WHERE user_id = $1 ORDER BY created_at DESC`,
-    [userId]
-  );
+  const [{ rows: scans }, { rows: topups }] = await Promise.all([
+    getPool().query(
+      `SELECT id, merchant_name, merchant_city, amount_idr, amount_usdc, created_at
+       FROM qris_scans WHERE user_id = $1`,
+      [userId]
+    ),
+    getPool().query(
+      `SELECT id, amount_usdc, stellar_tx_hash, created_at
+       FROM kolo_topups WHERE user_id = $1`,
+      [userId]
+    ),
+  ]);
 
-  return c.json({
-    orders: rows.map((r) => ({
-      orderId: r.id,
+  const entries = [
+    ...scans.map((r) => ({
+      type: "scan" as const,
+      id: r.id,
       merchantName: r.merchant_name,
       merchantCity: r.merchant_city,
       amountIdr: r.amount_idr,
       amountUsdc: r.amount_usdc,
-      state: r.state,
+      createdAt: r.created_at,
+    })),
+    ...topups.map((r) => ({
+      type: "topup" as const,
+      id: r.id,
+      amountUsdc: r.amount_usdc,
       stellarTxHash: r.stellar_tx_hash,
       createdAt: r.created_at,
     })),
-  });
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return c.json({ entries });
 });
