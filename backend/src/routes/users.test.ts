@@ -9,46 +9,23 @@ before(async () => {
   await migrate();
 });
 
-test("POST /users onboards with IDRX, funds the account, and returns an unsigned trustline tx", async () => {
+test("POST /users funds the account and returns an unsigned trustline tx", async () => {
   const stellarPublicKey = `GNEWUSER${Math.random().toString(36).slice(2)}`;
-  // Randomized: users.idrx_deposit_address has a partial unique index (see
-  // schema.sql); a fixed literal would collide across repeated test runs
-  // against the same persistent test database.
-  const depositWalletAddress = `0xDEPOSIT${Math.random().toString(36).slice(2)}`;
   const submittedXdrs: string[] = [];
 
   const app = createUsersRoute({
-    onboardUser: async () => ({
-      id: 1011,
-      apiKey: "user-api-key",
-      apiSecret: Buffer.from("user-secret").toString("base64"),
-      fullname: "Test User",
-    }),
-    addBankAccount: async () => ({ depositWalletAddress }),
     buildOnboardingTx: async () => ({ signedXdr: "FAKE_FUNDING_XDR" }),
     buildTrustlineTx: async () => ({ unsignedXdr: "FAKE_TRUSTLINE_XDR" }),
-    // The route submits the funding tx synchronously before returning. A real
-    // submitStellarTx would hit Horizon over the network with a bogus XDR
-    // string here, so it's stubbed like every other externally-calling dep.
     submitStellarTx: async (signedXdr: string) => {
       submittedXdrs.push(signedXdr);
+      return { hash: "FAKE_HASH" };
     },
   });
 
   const res = await app.request("/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      stellarPublicKey,
-      email: "user@example.com",
-      fullname: "Test User",
-      address: "Jakarta",
-      idNumber: "1234567890",
-      idFileBase64: Buffer.from("fake-image-bytes").toString("base64"),
-      bankAccountNumber: "081234567890",
-      bankCode: "GOPAY",
-      provider: "gopay",
-    }),
+    body: JSON.stringify({ stellarPublicKey }),
   });
 
   assert.equal(res.status, 201);
@@ -58,30 +35,14 @@ test("POST /users onboards with IDRX, funds the account, and returns an unsigned
   assert.deepEqual(submittedXdrs, ["FAKE_FUNDING_XDR"]);
 
   const pool = getPool();
-  const { rows } = await pool.query(
-    `SELECT stellar_public_key, idrx_user_id, idrx_api_key, idrx_api_secret, idrx_deposit_address, provider
-     FROM users WHERE id = $1`,
-    [body.userId]
-  );
+  const { rows } = await pool.query(`SELECT stellar_public_key FROM users WHERE id = $1`, [body.userId]);
   assert.equal(rows[0].stellar_public_key, stellarPublicKey);
-  assert.equal(rows[0].idrx_user_id, 1011);
-  assert.equal(rows[0].idrx_api_key, "user-api-key");
-  assert.equal(rows[0].idrx_api_secret, Buffer.from("user-secret").toString("base64"));
-  assert.equal(rows[0].idrx_deposit_address, depositWalletAddress);
-  assert.equal(rows[0].provider, "gopay");
 });
 
-test("POST /users returns a clear error response (not an unhandled crash) when a post-onboarding step throws", async () => {
+test("POST /users returns a clear error response (not an unhandled crash) when a Stellar step throws", async () => {
   const stellarPublicKey = `GNEWUSER${Math.random().toString(36).slice(2)}`;
 
   const app = createUsersRoute({
-    onboardUser: async () => ({
-      id: 2022,
-      apiKey: "user-api-key",
-      apiSecret: Buffer.from("user-secret").toString("base64"),
-      fullname: "Test User",
-    }),
-    addBankAccount: async () => ({ depositWalletAddress: "0xDEPOSIT..." }),
     buildOnboardingTx: async () => {
       throw new Error("Horizon: could not build funding tx (simulated failure)");
     },
@@ -90,17 +51,7 @@ test("POST /users returns a clear error response (not an unhandled crash) when a
   const res = await app.request("/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      stellarPublicKey,
-      email: "user@example.com",
-      fullname: "Test User",
-      address: "Jakarta",
-      idNumber: "1234567890",
-      idFileBase64: Buffer.from("fake-image-bytes").toString("base64"),
-      bankAccountNumber: "081234567890",
-      bankCode: "GOPAY",
-      provider: "gopay",
-    }),
+    body: JSON.stringify({ stellarPublicKey }),
   });
 
   assert.equal(res.status, 502);
@@ -123,6 +74,7 @@ test("POST /users/:id/confirm-trustline submits the signed trustline tx and retu
   const app = createUsersRoute({
     submitStellarTx: async (signedXdr: string) => {
       submittedXdrs.push(signedXdr);
+      return { hash: "FAKE_HASH" };
     },
   });
 

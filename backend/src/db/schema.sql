@@ -1,20 +1,8 @@
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stellar_public_key TEXT NOT NULL UNIQUE,
-  idrx_user_id INTEGER,
-  idrx_api_key TEXT,
-  idrx_api_secret TEXT,
-  idrx_deposit_address TEXT,
-  provider TEXT NOT NULL DEFAULT 'other',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- Partial (NULL-excluding) so pre-onboarding-completion users (no deposit
--- address yet) don't collide with each other, while enforcing that any
--- assigned deposit address maps back to exactly one user — the webhook
--- reconciliation in routes/webhooks.ts relies on this being true.
-CREATE UNIQUE INDEX IF NOT EXISTS users_idrx_deposit_address_unique
-  ON users (idrx_deposit_address) WHERE idrx_deposit_address IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -53,3 +41,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS orders_one_in_flight_per_user
 ALTER TABLE orders DROP COLUMN IF EXISTS bridge_status;
 ALTER TABLE orders DROP COLUMN IF EXISTS idrx_merchant_order_id;
 ALTER TABLE orders DROP COLUMN IF EXISTS idrx_status;
+
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_user_id;
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_api_key;
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_api_secret;
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_deposit_address;
+ALTER TABLE users DROP COLUMN IF EXISTS provider;
+DROP INDEX IF EXISTS users_idrx_deposit_address_unique;
