@@ -28,7 +28,7 @@ export function OnboardingForm() {
       await confirmTrustline(userId, signedXdr);
 
       window.localStorage.setItem(USER_ID_KEY, userId);
-      router.push("/home");
+      router.push("/onboarding/backup");
     } catch (err) {
       setError((err as Error).message);
     } finally {
