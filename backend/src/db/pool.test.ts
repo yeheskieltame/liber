@@ -20,8 +20,7 @@ test("migrate creates users and orders tables", async (t) => {
   for (const expected of [
     "id", "user_id", "qr_content", "merchant_name", "merchant_city", "amount_idr",
     "amount_usdc", "quote_rate", "quote_expires_at", "state", "from_account_address",
-    "stellar_tx_hash", "bridge_status", "idrx_merchant_order_id", "idrx_status",
-    "failure_reason", "created_at", "updated_at",
+    "stellar_tx_hash", "failure_reason", "created_at", "updated_at",
   ]) {
     assert.ok(columnNames.includes(expected), `missing column: ${expected}`);
   }

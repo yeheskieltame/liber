@@ -52,16 +52,6 @@ export async function getOrder(id: string): Promise<OrderRow | null> {
   return rows[0] ?? null;
 }
 
-export async function getOrderWithProvider(
-  id: string
-): Promise<(OrderRow & { provider: "gopay" | "dana" | "ovo" | "other" }) | null> {
-  const { rows } = await getPool().query(
-    `SELECT o.*, u.provider FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = $1`,
-    [id]
-  );
-  return rows[0] ?? null;
-}
-
 export async function updateOrderState(
   id: string,
   state: OrderState,

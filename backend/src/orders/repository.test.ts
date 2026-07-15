@@ -11,16 +11,9 @@ before(async () => {
 
 async function insertTestUser(): Promise<string> {
   const pool = getPool();
-  const { rows } = await pool.query(
-    `INSERT INTO users (stellar_public_key, idrx_deposit_address, provider) VALUES ($1, $2, $3) RETURNING id`,
-    [
-      `GTESTUSER${Math.random().toString(36).slice(2)}`,
-      // Randomized: users.idrx_deposit_address has its own partial unique
-      // index (see schema.sql), unrelated to what this file is testing.
-      `0xDEPOSIT${Math.random().toString(36).slice(2)}`,
-      "other",
-    ]
-  );
+  const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    `GTESTUSER${Math.random().toString(36).slice(2)}`,
+  ]);
   return rows[0].id;
 }
 

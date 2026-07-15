@@ -29,9 +29,6 @@ CREATE TABLE IF NOT EXISTS orders (
   state TEXT NOT NULL DEFAULT 'scanned',
   from_account_address TEXT NOT NULL,
   stellar_tx_hash TEXT,
-  bridge_status TEXT,
-  idrx_merchant_order_id TEXT,
-  idrx_status TEXT,
   failure_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -48,3 +45,11 @@ CREATE INDEX IF NOT EXISTS orders_user_id_idx ON orders(user_id);
 -- lands.
 CREATE UNIQUE INDEX IF NOT EXISTS orders_one_in_flight_per_user
   ON orders (user_id) WHERE state NOT IN ('completed', 'failed');
+
+-- Treasury-float pivot (2026-07-15): these columns supported the removed
+-- Allbridge/IDRX integration. DROP COLUMN IF EXISTS is idempotent against
+-- both a fresh install (columns never existed) and the already-deployed
+-- Railway database (columns existed, now removed).
+ALTER TABLE orders DROP COLUMN IF EXISTS bridge_status;
+ALTER TABLE orders DROP COLUMN IF EXISTS idrx_merchant_order_id;
+ALTER TABLE orders DROP COLUMN IF EXISTS idrx_status;

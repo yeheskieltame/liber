@@ -2,17 +2,15 @@ export type OrderState =
   | "scanned"
   | "quoted"
   | "approved"
-  | "bridging"
-  | "redeeming"
+  | "awaiting_settlement"
   | "completed"
   | "failed";
 
 export type OrderEvent =
   | "quote_received"
   | "user_approved"
-  | "bridge_submitted"
-  | "bridge_confirmed"
-  | "idrx_redeemed"
+  | "payment_submitted"
+  | "settled"
   | "failure";
 
 export class InvalidTransitionError extends Error {
@@ -25,9 +23,8 @@ export class InvalidTransitionError extends Error {
 const TRANSITIONS: Record<OrderState, Partial<Record<OrderEvent, OrderState>>> = {
   scanned: { quote_received: "quoted", failure: "failed" },
   quoted: { user_approved: "approved", failure: "failed" },
-  approved: { bridge_submitted: "bridging", failure: "failed" },
-  bridging: { bridge_confirmed: "redeeming", failure: "failed" },
-  redeeming: { idrx_redeemed: "completed", failure: "failed" },
+  approved: { payment_submitted: "awaiting_settlement", failure: "failed" },
+  awaiting_settlement: { settled: "completed", failure: "failed" },
   completed: {},
   failed: {},
 };

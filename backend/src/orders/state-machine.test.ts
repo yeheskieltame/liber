@@ -2,17 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { transition, InvalidTransitionError, type OrderState } from "./state-machine.js";
 
-test("happy path: scanned -> quoted -> approved -> bridging -> redeeming -> completed", () => {
+test("happy path: scanned -> quoted -> approved -> awaiting_settlement -> completed", () => {
   assert.equal(transition("scanned", "quote_received"), "quoted");
   assert.equal(transition("quoted", "user_approved"), "approved");
-  assert.equal(transition("approved", "bridge_submitted"), "bridging");
-  assert.equal(transition("bridging", "bridge_confirmed"), "redeeming");
-  assert.equal(transition("redeeming", "idrx_redeemed"), "completed");
+  assert.equal(transition("approved", "payment_submitted"), "awaiting_settlement");
+  assert.equal(transition("awaiting_settlement", "settled"), "completed");
 });
 
 test("any state can move to failed via a failure event", () => {
-  assert.equal(transition("bridging", "failure"), "failed");
-  assert.equal(transition("redeeming", "failure"), "failed");
+  assert.equal(transition("approved", "failure"), "failed");
+  assert.equal(transition("awaiting_settlement", "failure"), "failed");
 });
 
 test("rejects an out-of-order transition", () => {
