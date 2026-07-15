@@ -10,20 +10,24 @@ import { getBalance } from "@/lib/api";
 
 const FEATURES = [
   {
-    title: "Dompet Stellar non-custodial",
-    body: "Kunci pribadi kamu tersimpan di perangkat kamu sendiri. Liber tidak pernah menyimpan atau mengakses kunci itu.",
-  },
-  {
     title: "Scan QRIS, cek kurs",
     body: "Scan QRIS merchant mana pun, langsung lihat berapa USDC yang setara sebelum kamu bayar.",
+    href: "/pay",
   },
   {
     title: "Rute ke kartu Kolo",
     body: "Kirim USDC ke kartu Kolo kamu, lalu bayar QRIS langsung lewat GoPay pakai kartu itu.",
+    href: "/kolo",
+  },
+  {
+    title: "Terima USDC",
+    body: "Alamat Stellar kamu sendiri, buat nerima USDC dari mana saja.",
+    href: "/receive",
   },
   {
     title: "Riwayat tercatat",
     body: "Setiap scan dan top up tersimpan rapi, gampang ditelusuri kapan saja.",
+    href: "/history",
   },
 ];
 
@@ -59,15 +63,20 @@ export default function HomePage() {
           Belanja QRIS langsung dari saldo USDC kamu.
         </h1>
         <p className="mt-3 text-sm text-ink/60">
-          Non-custodial, mobile-first. Lihat dulu cara kerjanya di bawah, baru buat wallet kalau sudah yakin.
+          Non-custodial, mobile-first. Buka-buka dulu halamannya di bawah, baru buat wallet kalau sudah yakin.
         </p>
 
         <div className="mt-6 flex flex-col gap-3">
           {FEATURES.map((feature) => (
-            <Card key={feature.title} className="flex flex-col gap-1">
-              <p className="font-semibold text-ink">{feature.title}</p>
-              <p className="text-sm text-ink/60">{feature.body}</p>
-            </Card>
+            <Link key={feature.title} href={feature.href} className="block">
+              <Card className="flex flex-col gap-1 transition active:scale-[0.98]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-ink">{feature.title}</p>
+                  <span className="text-ink/30">&rarr;</span>
+                </div>
+                <p className="text-sm text-ink/60">{feature.body}</p>
+              </Card>
+            </Link>
           ))}
         </div>
 

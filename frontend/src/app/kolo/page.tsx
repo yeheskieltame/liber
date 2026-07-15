@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Account, StrKey, Horizon, TransactionBuilder } from "@stellar/stellar-sdk";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
@@ -16,7 +15,6 @@ const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const KOLO_ADDRESS_KEY = "liber:koloAddress";
 
 export default function KoloPage() {
-  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [koloAddress, setKoloAddress] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -27,14 +25,9 @@ export default function KoloPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("liber:userId");
-    if (!stored) {
-      router.push("/onboarding");
-      return;
-    }
-    setUserId(stored);
+    setUserId(window.localStorage.getItem("liber:userId"));
     setKoloAddress(window.localStorage.getItem(KOLO_ADDRESS_KEY));
-  }, [router]);
+  }, []);
 
   function handleConnect(address: string) {
     setError(null);
@@ -42,7 +35,10 @@ export default function KoloPage() {
       setError("Alamat Kolo tidak valid. Pastikan ini alamat Stellar (diawali G).");
       return;
     }
-    if (!userId) return;
+    if (!userId) {
+      setError("Buat wallet dulu di halaman utama sebelum menghubungkan Kolo.");
+      return;
+    }
 
     window.localStorage.setItem(KOLO_ADDRESS_KEY, address);
     setKoloAddress(address);
@@ -63,7 +59,11 @@ export default function KoloPage() {
       setError("Nominal terlalu kecil. Masukkan minimal 0.01 USDC.");
       return;
     }
-    if (!userId || !koloAddress) return;
+    if (!userId) {
+      setError("Buat wallet dulu di halaman utama sebelum top up.");
+      return;
+    }
+    if (!koloAddress) return;
 
     setSubmitting(true);
     try {
@@ -92,11 +92,15 @@ export default function KoloPage() {
     }
   }
 
-  if (!userId) return null;
-
   return (
     <PageShell>
       <h1 className="font-display text-2xl italic text-ink">Kolo</h1>
+
+      {!userId && (
+        <p className="mt-4 rounded-2xl bg-gold/15 px-4 py-3 text-sm text-gold-deep">
+          Kamu belum punya wallet. Halaman ini bisa kamu lihat dulu, tapi perlu wallet buat benar-benar menghubungkan atau top up Kolo.
+        </p>
+      )}
 
       {!koloAddress ? (
         <Card className="mt-6 flex flex-col gap-4">

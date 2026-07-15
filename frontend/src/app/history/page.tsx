@@ -11,10 +11,12 @@ function truncateHash(hash: string): string {
 }
 
 export default function HistoryPage() {
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
 
   useEffect(() => {
     const userId = window.localStorage.getItem("liber:userId");
+    setHasWallet(!!userId);
     if (userId) {
       getHistory(userId)
         .then(setEntries)
@@ -26,8 +28,13 @@ export default function HistoryPage() {
     <PageShell>
       <h1 className="font-display text-2xl italic text-ink">Riwayat</h1>
 
-      {!entries && <p className="mt-8 text-center text-sm text-ink/60">Memuat riwayat...</p>}
-      {entries?.length === 0 && <p className="mt-8 text-center text-sm text-ink/40">Belum ada aktivitas.</p>}
+      {hasWallet === false && (
+        <p className="mt-8 text-center text-sm text-ink/40">
+          Belum ada wallet, jadi belum ada riwayat. Buat wallet dulu di halaman utama.
+        </p>
+      )}
+      {hasWallet && !entries && <p className="mt-8 text-center text-sm text-ink/60">Memuat riwayat...</p>}
+      {hasWallet && entries?.length === 0 && <p className="mt-8 text-center text-sm text-ink/40">Belum ada aktivitas.</p>}
 
       <ul className="mt-6 flex flex-col gap-3">
         {entries?.map((entry) => (
