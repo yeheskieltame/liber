@@ -3,31 +3,30 @@ import { Hono } from "hono";
 import { parseQRIS } from "../qris/parser.js";
 import { getQuote as defaultGetQuote } from "../quote/quote.js";
 import { transition, InvalidTransitionError } from "../orders/state-machine.js";
-import { insertOrder, getOrder, getOrderWithProvider, updateOrderState } from "../orders/repository.js";
-import { buildBridgeTx as defaultBuildBridgeTx, submitBridgeTx as defaultSubmitBridgeTx } from "../bridge/allbridge.js";
-import { buildEwalletHandoff } from "../deeplink/builder.js";
+import { insertOrder, getOrder, updateOrderState } from "../orders/repository.js";
+import { buildPaymentTx as defaultBuildPaymentTx, submitStellarTx as defaultSubmitStellarTx } from "../stellar/account.js";
 import { getPool } from "../db/pool.js";
 
 export interface OrdersRouteDeps {
   getQuote: typeof defaultGetQuote;
-  buildBridgeTx: typeof defaultBuildBridgeTx;
-  submitBridgeTx: typeof defaultSubmitBridgeTx;
+  buildPaymentTx: typeof defaultBuildPaymentTx;
+  submitStellarTx: typeof defaultSubmitStellarTx;
 }
 
 const defaultDeps: OrdersRouteDeps = {
   getQuote: defaultGetQuote,
-  buildBridgeTx: defaultBuildBridgeTx,
-  submitBridgeTx: defaultSubmitBridgeTx,
+  buildPaymentTx: defaultBuildPaymentTx,
+  submitStellarTx: defaultSubmitStellarTx,
 };
 
 export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
-  const { getQuote, buildBridgeTx, submitBridgeTx } = { ...defaultDeps, ...deps };
+  const { getQuote, buildPaymentTx, submitStellarTx } = { ...defaultDeps, ...deps };
   const ordersRoute = new Hono();
 
   ordersRoute.post("/orders", async (c) => {
     const { userId, qrContent } = await c.req.json<{ userId: string; qrContent: string }>();
 
-    const { rows } = await getPool().query(`SELECT idrx_deposit_address, stellar_public_key FROM users WHERE id = $1`, [userId]);
+    const { rows } = await getPool().query(`SELECT stellar_public_key FROM users WHERE id = $1`, [userId]);
     const user = rows[0];
     if (!user) return c.json({ error: "user not found" }, 404);
 
@@ -75,9 +74,9 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
       throw err;
     }
 
-    const { unsignedXdr } = await buildBridgeTx({
+    const { unsignedXdr } = await buildPaymentTx({
       fromAccountAddress: user.stellar_public_key,
-      toAccountAddress: user.idrx_deposit_address,
+      destinationPublicKey: process.env.TREASURY_PUBLIC_KEY!,
       amountUsdc: quote.amountUsdc,
     });
 
@@ -89,7 +88,7 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
         amountIdr: order.amount_idr,
         amountUsdc: order.amount_usdc,
         quoteExpiresAt: quote.expiresAt,
-        unsignedBridgeXdr: unsignedXdr,
+        unsignedPaymentXdr: unsignedXdr,
       },
       201
     );
@@ -114,10 +113,10 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
     await updateOrderState(id, approvedState);
 
     try {
-      const { hash } = await submitBridgeTx(signedXdr, order.from_account_address);
-      const bridgingState = transition(approvedState, "bridge_submitted");
-      await updateOrderState(id, bridgingState, { stellar_tx_hash: hash });
-      return c.json({ state: bridgingState, stellarTxHash: hash });
+      const { hash } = await submitStellarTx(signedXdr);
+      const settlementState = transition(approvedState, "payment_submitted");
+      await updateOrderState(id, settlementState, { stellar_tx_hash: hash });
+      return c.json({ state: settlementState, stellarTxHash: hash });
     } catch (err) {
       const failedState = transition(approvedState, "failure");
       await updateOrderState(id, failedState, { failure_reason: (err as Error).message });
@@ -125,8 +124,31 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
     }
   });
 
+  ordersRoute.post("/orders/:id/settle", async (c) => {
+    // ponytail: plain string compare, not constant-time. Fine for a
+    // single-operator hackathon demo; upgrade to a timing-safe compare if
+    // this admin route is ever exposed beyond the operator's own tooling.
+    if (c.req.header("x-admin-secret") !== process.env.ADMIN_SECRET) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    const order = await getOrder(c.req.param("id"));
+    if (!order) return c.json({ error: "order not found" }, 404);
+
+    try {
+      const completedState = transition(order.state, "settled");
+      await updateOrderState(order.id, completedState);
+      return c.json({ state: completedState });
+    } catch (err) {
+      if (err instanceof InvalidTransitionError) {
+        return c.json({ error: err.message }, 409);
+      }
+      throw err;
+    }
+  });
+
   ordersRoute.get("/orders/:id", async (c) => {
-    const order = await getOrderWithProvider(c.req.param("id"));
+    const order = await getOrder(c.req.param("id"));
     if (!order) return c.json({ error: "order not found" }, 404);
     return c.json({
       state: order.state,
@@ -135,7 +157,6 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
       amountUsdc: order.amount_usdc,
       stellarTxHash: order.stellar_tx_hash,
       failureReason: order.failure_reason,
-      ewalletHandoff: buildEwalletHandoff(order.provider, order.qr_content),
     });
   });
 

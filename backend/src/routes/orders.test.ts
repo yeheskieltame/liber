@@ -12,26 +12,15 @@ before(async () => {
   await migrate();
 });
 
-async function insertTestUser(provider = "other"): Promise<string> {
+async function insertTestUser(): Promise<string> {
   const pool = getPool();
-  const { rows } = await pool.query(
-    `INSERT INTO users (stellar_public_key, idrx_deposit_address, provider) VALUES ($1, $2, $3) RETURNING id`,
-    [
-      `GTESTUSER${Math.random().toString(36).slice(2)}`,
-      // Randomized: users.idrx_deposit_address has a partial unique index
-      // (see schema.sql), and this helper is called by many tests within a
-      // single run — a fixed literal here would collide with itself.
-      `0xDEPOSIT${Math.random().toString(36).slice(2)}`,
-      provider,
-    ]
-  );
+  const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    `GTESTUSER${Math.random().toString(36).slice(2)}`,
+  ]);
   return rows[0].id;
 }
 
-async function insertOrderWithState(
-  userId: string,
-  state: OrderState
-): Promise<string> {
+async function insertOrderWithState(userId: string, state: OrderState): Promise<string> {
   const pool = getPool();
   const { rows } = await pool.query(
     `INSERT INTO orders (user_id, qr_content, merchant_name, merchant_city, amount_idr, amount_usdc, quote_expires_at, from_account_address, state)
@@ -51,7 +40,7 @@ async function insertOrderWithState(
   return rows[0].id;
 }
 
-test("POST /orders parses QRIS, quotes it, and returns an unsigned bridge XDR", async () => {
+test("POST /orders parses QRIS, quotes it, and returns an unsigned payment XDR", async () => {
   const userId = await insertTestUser();
 
   const app = createOrdersRoute({
@@ -60,7 +49,7 @@ test("POST /orders parses QRIS, quotes it, and returns an unsigned bridge XDR", 
       rateIdrPerUsdc: "16000",
       expiresAt: new Date(Date.now() + 30_000),
     }),
-    buildBridgeTx: async () => ({ unsignedXdr: "FAKE_UNSIGNED_XDR" }),
+    buildPaymentTx: async () => ({ unsignedXdr: "FAKE_UNSIGNED_XDR" }),
   });
 
   const qrContent = buildQris([
@@ -81,7 +70,7 @@ test("POST /orders parses QRIS, quotes it, and returns an unsigned bridge XDR", 
 
   assert.equal(res.status, 201);
   const body = await res.json();
-  assert.equal(body.unsignedBridgeXdr, "FAKE_UNSIGNED_XDR");
+  assert.equal(body.unsignedPaymentXdr, "FAKE_UNSIGNED_XDR");
   assert.equal(body.amountUsdc, "2.02");
   assert.equal(body.merchantName, "Warung Kopi Asa");
   assert.equal(body.merchantCity, "Jakarta");
@@ -157,7 +146,7 @@ test("POST /orders returns 409 when the user already has an order in progress", 
       rateIdrPerUsdc: "16000",
       expiresAt: new Date(Date.now() + 30_000),
     }),
-    buildBridgeTx: async () => ({ unsignedXdr: "FAKE_UNSIGNED_XDR" }),
+    buildPaymentTx: async () => ({ unsignedXdr: "FAKE_UNSIGNED_XDR" }),
   });
 
   const qrContent = buildQris([
@@ -178,9 +167,6 @@ test("POST /orders returns 409 when the user already has an order in progress", 
   assert.equal(firstRes.status, 201);
   const firstBody = await firstRes.json();
 
-  // The order created above lands in "quoted" — a non-terminal state — so a
-  // second order for the same user must be rejected rather than silently
-  // creating a concurrent in-flight order (see Finding 1).
   const pool = getPool();
   const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [firstBody.orderId]);
   assert.notEqual(rows[0].state, "completed");
@@ -197,7 +183,7 @@ test("POST /orders returns 409 when the user already has an order in progress", 
   assert.equal(secondBody.error, "an order is already in progress for this user");
 });
 
-test("POST /orders/:id/approve submits the signed XDR and transitions to bridging", async () => {
+test("POST /orders/:id/approve submits the signed XDR and transitions to awaiting_settlement", async () => {
   const userId = await insertTestUser();
   const order = await insertOrder({
     userId,
@@ -212,7 +198,7 @@ test("POST /orders/:id/approve submits the signed XDR and transitions to bridgin
   });
 
   const app = createOrdersRoute({
-    submitBridgeTx: async () => ({ hash: "FAKE_STELLAR_TX_HASH" }),
+    submitStellarTx: async () => ({ hash: "FAKE_STELLAR_TX_HASH" }),
   });
 
   const res = await app.request(`/orders/${order.id}/approve`, {
@@ -223,16 +209,16 @@ test("POST /orders/:id/approve submits the signed XDR and transitions to bridgin
 
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.state, "bridging");
+  assert.equal(body.state, "awaiting_settlement");
   assert.equal(body.stellarTxHash, "FAKE_STELLAR_TX_HASH");
 
   const pool = getPool();
   const { rows } = await pool.query("SELECT state, stellar_tx_hash FROM orders WHERE id = $1", [order.id]);
-  assert.equal(rows[0].state, "bridging");
+  assert.equal(rows[0].state, "awaiting_settlement");
   assert.equal(rows[0].stellar_tx_hash, "FAKE_STELLAR_TX_HASH");
 });
 
-test("POST /orders/:id/approve surfaces bridge submission failures as a 502 and marks the order failed", async () => {
+test("POST /orders/:id/approve surfaces payment submission failures as a 502 and marks the order failed", async () => {
   const userId = await insertTestUser();
   const order = await insertOrder({
     userId,
@@ -247,8 +233,8 @@ test("POST /orders/:id/approve surfaces bridge submission failures as a 502 and 
   });
 
   const app = createOrdersRoute({
-    submitBridgeTx: async () => {
-      throw new Error("bridge rejected the transaction");
+    submitStellarTx: async () => {
+      throw new Error("Horizon rejected the transaction");
     },
   });
 
@@ -265,7 +251,7 @@ test("POST /orders/:id/approve surfaces bridge submission failures as a 502 and 
   const pool = getPool();
   const { rows } = await pool.query("SELECT state, failure_reason FROM orders WHERE id = $1", [order.id]);
   assert.equal(rows[0].state, "failed");
-  assert.equal(rows[0].failure_reason, "bridge rejected the transaction");
+  assert.equal(rows[0].failure_reason, "Horizon rejected the transaction");
 });
 
 test("POST /orders/:id/approve returns 404 for an unknown order", async () => {
@@ -281,10 +267,10 @@ test("POST /orders/:id/approve returns 404 for an unknown order", async () => {
 
 test("POST /orders/:id/approve returns 409 when order is not in quoted state", async () => {
   const userId = await insertTestUser();
-  const orderId = await insertOrderWithState(userId, "bridging");
+  const orderId = await insertOrderWithState(userId, "awaiting_settlement");
 
   const app = createOrdersRoute({
-    submitBridgeTx: async () => ({ hash: "FAKE_STELLAR_TX_HASH" }),
+    submitStellarTx: async () => ({ hash: "FAKE_STELLAR_TX_HASH" }),
   });
 
   const res = await app.request(`/orders/${orderId}/approve`, {
@@ -295,26 +281,81 @@ test("POST /orders/:id/approve returns 409 when order is not in quoted state", a
 
   assert.equal(res.status, 409);
   const body = await res.json();
-  assert.match(body.error, /Cannot apply event "user_approved" to state "bridging"/);
+  assert.match(body.error, /Cannot apply event "user_approved" to state "awaiting_settlement"/);
 
   const pool = getPool();
   const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [orderId]);
-  assert.equal(rows[0].state, "bridging");
+  assert.equal(rows[0].state, "awaiting_settlement");
 });
 
-test("GET /orders/:id returns order status plus e-wallet handoff for the owner's provider", async () => {
-  const userId = await insertTestUser("gopay");
-  const qrContent = buildQris([
-    ["00", "01"],
-    ["01", "11"],
-    ["53", "360"],
-    ["58", "ID"],
-    ["59", "Warung Kopi Asa"],
-    ["60", "Jakarta"],
-  ]);
+test("POST /orders/:id/settle transitions awaiting_settlement to completed when the admin secret matches", async () => {
+  process.env.ADMIN_SECRET = "test-admin-secret";
+  const userId = await insertTestUser();
+  const orderId = await insertOrderWithState(userId, "awaiting_settlement");
+
+  const app = createOrdersRoute();
+  const res = await app.request(`/orders/${orderId}/settle`, {
+    method: "POST",
+    headers: { "x-admin-secret": "test-admin-secret" },
+  });
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.state, "completed");
+
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [orderId]);
+  assert.equal(rows[0].state, "completed");
+});
+
+test("POST /orders/:id/settle returns 403 when the admin secret is missing or wrong", async () => {
+  process.env.ADMIN_SECRET = "test-admin-secret";
+  const userId = await insertTestUser();
+  const orderId = await insertOrderWithState(userId, "awaiting_settlement");
+
+  const app = createOrdersRoute();
+  const res = await app.request(`/orders/${orderId}/settle`, {
+    method: "POST",
+    headers: { "x-admin-secret": "wrong-secret" },
+  });
+
+  assert.equal(res.status, 403);
+
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [orderId]);
+  assert.equal(rows[0].state, "awaiting_settlement");
+});
+
+test("POST /orders/:id/settle returns 409 when the order is not awaiting_settlement", async () => {
+  process.env.ADMIN_SECRET = "test-admin-secret";
+  const userId = await insertTestUser();
+  const orderId = await insertOrderWithState(userId, "quoted");
+
+  const app = createOrdersRoute();
+  const res = await app.request(`/orders/${orderId}/settle`, {
+    method: "POST",
+    headers: { "x-admin-secret": "test-admin-secret" },
+  });
+
+  assert.equal(res.status, 409);
+});
+
+test("POST /orders/:id/settle returns 404 for an unknown order", async () => {
+  process.env.ADMIN_SECRET = "test-admin-secret";
+  const app = createOrdersRoute();
+  const res = await app.request("/orders/00000000-0000-0000-0000-000000000000/settle", {
+    method: "POST",
+    headers: { "x-admin-secret": "test-admin-secret" },
+  });
+
+  assert.equal(res.status, 404);
+});
+
+test("GET /orders/:id returns order status", async () => {
+  const userId = await insertTestUser();
   const order = await insertOrder({
     userId,
-    qrContent,
+    qrContent: "irrelevant-for-this-test",
     merchantName: "Warung Kopi Asa",
     merchantCity: "Jakarta",
     amountIdr: "32000",
@@ -335,7 +376,6 @@ test("GET /orders/:id returns order status plus e-wallet handoff for the owner's
   assert.equal(body.amountUsdc, "2.02");
   assert.equal(body.stellarTxHash, null);
   assert.equal(body.failureReason, null);
-  assert.deepEqual(body.ewalletHandoff, { appLink: "gojek://gopay", qrContent });
 });
 
 test("GET /orders/:id returns 404 for an unknown order", async () => {
