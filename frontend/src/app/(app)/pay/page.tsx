@@ -7,6 +7,8 @@ import { QuoteCard } from "@/components/QuoteCard";
 import { parseQRIS } from "@/lib/qris/parser";
 import { getQuote, logScan, type Quote } from "@/lib/api";
 
+const USER_ID_KEY = "liber:userId";
+
 export default function PayPage() {
   const [merchant, setMerchant] = useState<{ name: string; city: string; amountIdr: string } | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -15,18 +17,18 @@ export default function PayPage() {
   const handleScan = useCallback(async (qrContent: string) => {
     try {
       const parsed = parseQRIS(qrContent);
-      const userId = window.localStorage.getItem("liber:userId");
-      if (!userId) throw new Error("Belum onboarding. Buka /onboarding dulu.");
+      const userId = window.localStorage.getItem(USER_ID_KEY);
+      if (!userId) throw new Error("No wallet found. Please restart the app.");
 
       let amountIdr: number;
       if (parsed.amount) {
         amountIdr = Number(parsed.amount);
       } else {
-        const input = window.prompt(`Nominal untuk ${parsed.merchantName} (Rp)`);
+        const input = window.prompt(`Amount for ${parsed.merchantName} (Rp)`);
         if (!input) return;
         amountIdr = Number(input);
         if (!Number.isFinite(amountIdr) || amountIdr <= 0) {
-          setError("Nominal tidak valid. Masukkan angka lebih dari 0.");
+          setError("Invalid amount. Enter a number greater than 0.");
           return;
         }
       }

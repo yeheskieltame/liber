@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" className={`${newsreader.variable} ${bricolage.variable}`}>
+    <html lang="en" className={`${newsreader.variable} ${bricolage.variable}`}>
       <body className="font-body antialiased">{children}</body>
     </html>
   );

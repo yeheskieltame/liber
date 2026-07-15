@@ -28,7 +28,7 @@ export function QrScanner({
       )
       .catch((err) => {
         console.error("camera start failed", err);
-        onError?.("Tidak bisa mengakses kamera. Periksa izin kamera di browser kamu.");
+        onError?.("Couldn't access the camera. Check your browser's camera permission.");
       });
 
     return () => {

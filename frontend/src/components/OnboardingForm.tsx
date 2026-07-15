@@ -28,7 +28,7 @@ export function OnboardingForm() {
       await confirmTrustline(userId, signedXdr);
 
       window.localStorage.setItem(USER_ID_KEY, userId);
-      router.push("/");
+      router.push("/home");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -40,14 +40,14 @@ export function OnboardingForm() {
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-2 text-center">
         <p className="text-sm text-ink/60">
-          Kami akan membuat dompet Stellar baru untukmu dan menyiapkannya untuk menerima USDC.
+          We&apos;ll create a new Stellar wallet for you, ready to receive USDC.
         </p>
       </Card>
 
       {error && <p className="text-sm text-rose">{error}</p>}
 
       <Button onClick={handleCreate} disabled={submitting}>
-        {submitting ? "Memproses..." : "Buat wallet"}
+        {submitting ? "Setting up..." : "Create Wallet"}
       </Button>
     </div>
   );

@@ -35,9 +35,9 @@ export function QuoteCard({
           {merchantName} &middot; {merchantCity}
         </p>
         <p className="mt-2 font-display text-4xl italic text-ink tabular-nums">
-          Rp {Number(amountIdr).toLocaleString("id-ID")}
+          Rp {Number(amountIdr).toLocaleString("en-US")}
         </p>
-        <p className="mt-1 text-sm text-ink/60 tabular-nums">setara {quote.amountUsdc} USDC</p>
+        <p className="mt-1 text-sm text-ink/60 tabular-nums">&asymp; {quote.amountUsdc} USDC</p>
       </div>
 
       <div>
@@ -47,14 +47,14 @@ export function QuoteCard({
             style={{ width: `${(secondsLeft / QUOTE_WINDOW_SECONDS) * 100}%` }}
           />
         </div>
-        <p className="mt-1 text-xs text-ink/40">Kurs berlaku {secondsLeft} detik lagi</p>
+        <p className="mt-1 text-xs text-ink/40">Rate valid for {secondsLeft}s more</p>
       </div>
 
       <a href="gojek://gopay" className="w-full">
-        <Button>Buka GoPay</Button>
+        <Button>Open GoPay</Button>
       </a>
       <p className="text-center text-xs text-ink/40">
-        Scan QRIS yang sama di GoPay, lalu bayar pakai kartu Kolo yang sudah kamu link.
+        Scan the same QRIS in GoPay, then pay with your linked Kolo card.
       </p>
     </Card>
   );

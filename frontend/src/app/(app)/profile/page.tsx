@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { Account, StrKey, Horizon, TransactionBuilder } from "@stellar/stellar-sdk";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
@@ -12,10 +13,15 @@ import { buildTopUpTx } from "@/lib/wallet/topup";
 import { saveKoloAddress, logTopup } from "@/lib/api";
 
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
+const USER_ID_KEY = "liber:userId";
 const KOLO_ADDRESS_KEY = "liber:koloAddress";
 
-export default function KoloPage() {
+export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+
   const [koloAddress, setKoloAddress] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [addressInput, setAddressInput] = useState("");
@@ -25,25 +31,24 @@ export default function KoloPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    setUserId(window.localStorage.getItem("liber:userId"));
+    setUserId(window.localStorage.getItem(USER_ID_KEY));
     setKoloAddress(window.localStorage.getItem(KOLO_ADDRESS_KEY));
+    getOrCreateWallet(new LocalStorageWalletStorage()).then(async (wallet) => {
+      setAddress(wallet.publicKey);
+      setQrDataUrl(await QRCode.toDataURL(wallet.publicKey));
+    });
   }, []);
 
-  function handleConnect(address: string) {
+  function handleConnect(value: string) {
     setError(null);
-    if (!StrKey.isValidEd25519PublicKey(address)) {
-      setError("Alamat Kolo tidak valid. Pastikan ini alamat Stellar (diawali G).");
-      return;
-    }
-    if (!userId) {
-      setError("Buat wallet dulu di halaman utama sebelum menghubungkan Kolo.");
+    if (!StrKey.isValidEd25519PublicKey(value)) {
+      setError("Invalid Kolo address. It should be a Stellar address starting with G.");
       return;
     }
 
-    window.localStorage.setItem(KOLO_ADDRESS_KEY, address);
-    setKoloAddress(address);
-
-    saveKoloAddress(userId, address).catch((err) => console.error("failed to save Kolo address to backend", err));
+    window.localStorage.setItem(KOLO_ADDRESS_KEY, value);
+    setKoloAddress(value);
+    if (userId) saveKoloAddress(userId, value).catch((err) => console.error("failed to save Kolo address", err));
   }
 
   async function handleTopUp() {
@@ -51,19 +56,15 @@ export default function KoloPage() {
     setSuccess(null);
     const amountUsdc = Number(amountInput);
     if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
-      setError("Nominal tidak valid. Masukkan angka lebih dari 0.");
+      setError("Invalid amount. Enter a number greater than 0.");
       return;
     }
     const amountUsdcRounded = (Math.floor(amountUsdc * 100) / 100).toFixed(2);
     if (Number(amountUsdcRounded) <= 0) {
-      setError("Nominal terlalu kecil. Masukkan minimal 0.01 USDC.");
+      setError("Amount too small. Minimum is 0.01 USDC.");
       return;
     }
-    if (!userId) {
-      setError("Buat wallet dulu di halaman utama sebelum top up.");
-      return;
-    }
-    if (!koloAddress) return;
+    if (!userId || !koloAddress) return;
 
     setSubmitting(true);
     try {
@@ -83,7 +84,7 @@ export default function KoloPage() {
       const response = await server.submitTransaction(tx);
 
       await logTopup(userId, { amountUsdc: amountUsdcRounded, stellarTxHash: response.hash });
-      setSuccess(`Berhasil kirim ${amountUsdcRounded} USDC ke Kolo.`);
+      setSuccess(`Sent ${amountUsdcRounded} USDC to Kolo.`);
       setAmountInput("");
     } catch (err) {
       setError((err as Error).message);
@@ -94,18 +95,38 @@ export default function KoloPage() {
 
   return (
     <PageShell>
-      <h1 className="font-display text-2xl italic text-ink">Kolo</h1>
+      <h1 className="font-display text-2xl italic text-ink">Profile</h1>
 
-      {!userId && (
-        <p className="mt-4 rounded-2xl bg-gold/15 px-4 py-3 text-sm text-gold-deep">
-          Kamu belum punya wallet. Halaman ini bisa kamu lihat dulu, tapi perlu wallet buat benar-benar menghubungkan atau top up Kolo.
-        </p>
-      )}
+      <Card className="mt-6 flex flex-col items-center gap-4 text-center">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">Your Wallet</p>
+        {address ? (
+          <>
+            <div className="rounded-3xl bg-ink p-4">
+              {qrDataUrl && <img src={qrDataUrl} alt="Stellar address" width={160} height={160} />}
+            </div>
+            <p className="break-all rounded-2xl bg-paper px-4 py-3 font-mono text-xs text-ink/70">{address}</p>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                navigator.clipboard.writeText(address);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Copied" : "Copy Address"}
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm text-ink/60">Loading address...</p>
+        )}
+      </Card>
+
+      <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-ink/50">Kolo Card</p>
 
       {!koloAddress ? (
-        <Card className="mt-6 flex flex-col gap-4">
+        <Card className="mt-3 flex flex-col gap-4">
           <p className="text-sm text-ink/60">
-            Hubungkan alamat Stellar dari akun Kolo kamu. USDC yang kamu kirim ke situ bisa langsung dibelanjakan lewat kartu Kolo yang di-link ke GoPay.
+            Connect your Kolo Stellar address. USDC sent there can be spent immediately through your Kolo card linked to GoPay.
           </p>
           {scanning ? (
             <QrScanner
@@ -120,31 +141,30 @@ export default function KoloPage() {
               <input
                 value={addressInput}
                 onChange={(e) => setAddressInput(e.target.value)}
-                placeholder="Alamat Stellar Kolo (G...)"
+                placeholder="Kolo Stellar address (G...)"
                 className="w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald"
               />
               <Button onClick={() => handleConnect(addressInput)} disabled={!addressInput}>
-                Hubungkan
+                Connect
               </Button>
               <Button variant="ghost" onClick={() => setScanning(true)}>
-                Scan QR Kolo
+                Scan Kolo QR
               </Button>
             </>
           )}
         </Card>
       ) : (
-        <Card className="mt-6 flex flex-col gap-4">
-          <p className="text-xs text-ink/50">Terhubung ke Kolo</p>
-          <p className="break-all font-mono text-xs text-ink/70">{koloAddress}</p>
+        <Card className="mt-3 flex flex-col gap-4">
+          <p className="break-all font-mono text-xs text-ink/50">{koloAddress}</p>
           <input
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}
-            placeholder="Jumlah USDC"
+            placeholder="Amount (USDC)"
             inputMode="decimal"
             className="w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald"
           />
           <Button onClick={handleTopUp} disabled={submitting || !amountInput}>
-            {submitting ? "Mengirim..." : "Top up Kolo"}
+            {submitting ? "Sending..." : "Top Up Kolo"}
           </Button>
         </Card>
       )}

@@ -6,35 +6,29 @@ import { Card } from "@/components/ui/Card";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { getHistory, type HistoryEntry } from "@/lib/api";
 
+const USER_ID_KEY = "liber:userId";
+
 function truncateHash(hash: string): string {
   return hash.length > 14 ? `${hash.slice(0, 8)}...${hash.slice(-6)}` : hash;
 }
 
 export default function HistoryPage() {
-  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
 
   useEffect(() => {
-    const userId = window.localStorage.getItem("liber:userId");
-    setHasWallet(!!userId);
-    if (userId) {
-      getHistory(userId)
-        .then(setEntries)
-        .catch(() => setEntries([]));
-    }
+    const userId = window.localStorage.getItem(USER_ID_KEY);
+    if (!userId) return;
+    getHistory(userId)
+      .then(setEntries)
+      .catch(() => setEntries([]));
   }, []);
 
   return (
     <PageShell>
-      <h1 className="font-display text-2xl italic text-ink">Riwayat</h1>
+      <h1 className="font-display text-2xl italic text-ink">History</h1>
 
-      {hasWallet === false && (
-        <p className="mt-8 text-center text-sm text-ink/40">
-          Belum ada wallet, jadi belum ada riwayat. Buat wallet dulu di halaman utama.
-        </p>
-      )}
-      {hasWallet && !entries && <p className="mt-8 text-center text-sm text-ink/60">Memuat riwayat...</p>}
-      {hasWallet && entries?.length === 0 && <p className="mt-8 text-center text-sm text-ink/40">Belum ada aktivitas.</p>}
+      {!entries && <p className="mt-8 text-center text-sm text-ink/60">Loading...</p>}
+      {entries?.length === 0 && <p className="mt-8 text-center text-sm text-ink/40">No activity yet.</p>}
 
       <ul className="mt-6 flex flex-col gap-3">
         {entries?.map((entry) => (
@@ -44,18 +38,18 @@ export default function HistoryPage() {
                 <>
                   <div className="flex items-start justify-between gap-3">
                     <span className="font-medium text-ink">{entry.merchantName}</span>
-                    <StatusPill state="scan" label="Scan QRIS" />
+                    <StatusPill state="scan" label="QRIS Scan" />
                   </div>
                   <p className="text-xs text-ink/50">{entry.merchantCity}</p>
                   <p className="text-sm tabular-nums text-ink/80">
-                    Rp {Number(entry.amountIdr).toLocaleString("id-ID")} &middot; {entry.amountUsdc} USDC
+                    Rp {Number(entry.amountIdr).toLocaleString("en-US")} &middot; {entry.amountUsdc} USDC
                   </p>
                 </>
               ) : (
                 <>
                   <div className="flex items-start justify-between gap-3">
-                    <span className="font-medium text-ink">Top up Kolo</span>
-                    <StatusPill state="topup" label="Terkirim" />
+                    <span className="font-medium text-ink">Kolo Top-up</span>
+                    <StatusPill state="topup" label="Sent" />
                   </div>
                   <p className="text-sm tabular-nums text-ink/80">{entry.amountUsdc} USDC</p>
                   {entry.stellarTxHash && (
@@ -63,7 +57,7 @@ export default function HistoryPage() {
                   )}
                 </>
               )}
-              <p className="text-xs text-ink/30">{new Date(entry.createdAt).toLocaleString("id-ID")}</p>
+              <p className="text-xs text-ink/30">{new Date(entry.createdAt).toLocaleString("en-GB")}</p>
             </Card>
           </li>
         ))}
