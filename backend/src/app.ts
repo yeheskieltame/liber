@@ -5,6 +5,7 @@ import { balanceRoute } from "./routes/balance.js";
 import { historyRoute } from "./routes/history.js";
 import { quoteRoute } from "./routes/quote.js";
 import { scansRoute } from "./routes/scans.js";
+import { topupsRoute } from "./routes/topups.js";
 
 export function createApp() {
   const app = new Hono();
@@ -20,5 +21,6 @@ export function createApp() {
   app.route("/", historyRoute);
   app.route("/", quoteRoute);
   app.route("/", scansRoute);
+  app.route("/", topupsRoute);
   return app;
 }
