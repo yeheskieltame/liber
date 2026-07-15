@@ -19,7 +19,6 @@ const STEP_INDEX: Record<string, number> = {
   bridging: 1,
   redeeming: 2,
   completed: 3,
-  failed: 3,
 };
 
 export function OrderStatus({ orderId }: { orderId: string }) {
@@ -47,7 +46,10 @@ export function OrderStatus({ orderId }: { orderId: string }) {
     return <p className="mt-8 text-center text-sm text-ink/60">Memuat status...</p>;
   }
 
-  const currentIndex = STEP_INDEX[status.state] ?? 0;
+  // A "failed" order has no known partial progress — the backend only reports a terminal
+  // failure, not which step it failed at. Don't paint any dot emerald in that case; the
+  // rose StatusPill + failure message below are the sole indicator of the outcome.
+  const currentIndex = status.state === "failed" ? -1 : STEP_INDEX[status.state] ?? 0;
 
   return (
     <div className="flex flex-col gap-5">

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { PageShell } from "@/components/ui/PageShell";
 import { getOrCreateWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 import { signXdr } from "@/lib/wallet/keypair";
-import { approveOrder } from "@/lib/api";
+import { approveOrder, getOrder } from "@/lib/api";
 import { OrderStatus } from "@/components/OrderStatus";
 
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
@@ -18,12 +18,23 @@ export default function OrderPage() {
   useEffect(() => {
     async function approve() {
       try {
+        // Guard against re-triggering the sign+approve flow on remount (e.g. a page refresh
+        // while the bridge is still settling). If the order has already moved past "quoted",
+        // it was already approved in a previous load — just show its current status instead
+        // of re-signing and re-submitting.
+        const currentStatus = await getOrder(orderId);
+        if (currentStatus.state !== "quoted") {
+          setApproved(true);
+          return;
+        }
+
         const unsignedXdr = window.sessionStorage.getItem(`liber:pendingBridgeXdr:${orderId}`);
         if (!unsignedXdr) throw new Error("Sesi kadaluarsa, scan ulang QRIS-nya.");
 
         const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
         const signedXdr = signXdr(wallet.secretKey, unsignedXdr, NETWORK_PASSPHRASE);
         await approveOrder(orderId, signedXdr);
+        window.sessionStorage.removeItem(`liber:pendingBridgeXdr:${orderId}`);
         setApproved(true);
       } catch (err) {
         setError((err as Error).message);
