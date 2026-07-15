@@ -1,29 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { getOrder, type OrderStatus as OrderStatusData } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 
 const STEPS = [
   { key: "approved", label: "Disetujui" },
-  { key: "bridging", label: "Mengirim USDC lintas rantai" },
-  { key: "redeeming", label: "Mencairkan ke Rupiah" },
+  { key: "awaiting_settlement", label: "Menunggu pembayaran ke merchant" },
   { key: "completed", label: "Selesai" },
 ] as const;
 
 const STEP_INDEX: Record<string, number> = {
   approved: 0,
-  bridging: 1,
-  redeeming: 2,
-  completed: 3,
+  awaiting_settlement: 1,
+  completed: 2,
 };
 
 export function OrderStatus({ orderId }: { orderId: string }) {
   const [status, setStatus] = useState<OrderStatusData | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   useEffect(() => {
     async function poll() {
@@ -41,12 +36,6 @@ export function OrderStatus({ orderId }: { orderId: string }) {
     const interval = setInterval(poll, 3000);
     return () => clearInterval(interval);
   }, [orderId]);
-
-  useEffect(() => {
-    if (status?.state === "completed") {
-      QRCode.toDataURL(status.ewalletHandoff.qrContent).then(setQrDataUrl);
-    }
-  }, [status]);
 
   if (!status) {
     return <p className="mt-8 text-center text-sm text-ink/60">Memuat status...</p>;
@@ -82,23 +71,17 @@ export function OrderStatus({ orderId }: { orderId: string }) {
 
       {status.state === "completed" && (
         <Card className="flex flex-col items-center gap-4 text-center">
-          <StatusPill state="completed" label="Siap dibayar" />
+          <StatusPill state="completed" label="Selesai" />
           <p className="text-sm text-ink/60">
-            Saldo di e-wallet kamu sudah bertambah. Scan ulang QRIS {status.merchantName} ini dari aplikasi e-wallet untuk membayar merchant.
+            Pembayaran ke {status.merchantName} sudah selesai. Terima kasih sudah menggunakan Liber.
           </p>
-          {qrDataUrl && (
-            <div className="rounded-3xl bg-ink p-4">
-              <img src={qrDataUrl} alt="QRIS" width={200} height={200} />
-            </div>
-          )}
-          {status.ewalletHandoff.appLink && (
-            <a href={status.ewalletHandoff.appLink} className="w-full">
-              <Button variant="secondary">Buka e-wallet</Button>
-            </a>
-          )}
-          {status.stellarTxHash && (
-            <p className="break-all text-xs text-ink/40">Tx: {status.stellarTxHash}</p>
-          )}
+          <div className="w-full rounded-2xl bg-paper px-4 py-3 text-left">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink/50">Rincian</p>
+            <p className="mt-1 text-sm text-ink">Merchant: {status.merchantName}</p>
+            <p className="text-sm text-ink tabular-nums">Rp {Number(status.amountIdr).toLocaleString("id-ID")}</p>
+            <p className="text-sm text-ink/60 tabular-nums">{status.amountUsdc} USDC</p>
+          </div>
+          {status.stellarTxHash && <p className="break-all text-xs text-ink/40">Tx: {status.stellarTxHash}</p>}
         </Card>
       )}
     </div>
