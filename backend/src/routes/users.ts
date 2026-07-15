@@ -74,6 +74,18 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
     return c.json({ koloStellarAddress });
   });
 
+  usersRoute.get("/users/by-key/:stellarPublicKey", async (c) => {
+    const stellarPublicKey = c.req.param("stellarPublicKey");
+    if (!StrKey.isValidEd25519PublicKey(stellarPublicKey)) {
+      return c.json({ error: "stellarPublicKey must be a valid Stellar public key" }, 400);
+    }
+
+    const { rows } = await getPool().query(`SELECT id FROM users WHERE stellar_public_key = $1`, [stellarPublicKey]);
+    if (!rows[0]) return c.json({ error: "user not found" }, 404);
+
+    return c.json({ userId: rows[0].id });
+  });
+
   return usersRoute;
 }
 

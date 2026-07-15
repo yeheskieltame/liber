@@ -141,3 +141,33 @@ test("POST /users/:id/kolo-address returns 404 for an unknown user", async () =>
 
   assert.equal(res.status, 404);
 });
+
+test("GET /users/by-key/:stellarPublicKey returns the matching userId", async () => {
+  const pool = getPool();
+  const stellarPublicKey = Keypair.random().publicKey();
+  const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    stellarPublicKey,
+  ]);
+  const userId = rows[0].id;
+
+  const app = createUsersRoute();
+  const res = await app.request(`/users/by-key/${stellarPublicKey}`);
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.userId, userId);
+});
+
+test("GET /users/by-key/:stellarPublicKey returns 404 when no user has that key", async () => {
+  const app = createUsersRoute();
+  const res = await app.request(`/users/by-key/${Keypair.random().publicKey()}`);
+
+  assert.equal(res.status, 404);
+});
+
+test("GET /users/by-key/:stellarPublicKey rejects a malformed key", async () => {
+  const app = createUsersRoute();
+  const res = await app.request("/users/by-key/not-a-real-address");
+
+  assert.equal(res.status, 400);
+});
