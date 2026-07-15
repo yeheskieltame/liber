@@ -1,5 +1,6 @@
 // backend/src/routes/users.ts
 import { Hono } from "hono";
+import { StrKey } from "@stellar/stellar-sdk";
 import { getPool } from "../db/pool.js";
 import {
   buildOnboardingTx as defaultBuildOnboardingTx,
@@ -56,6 +57,21 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
     const { signedXdr } = await c.req.json<{ signedXdr: string }>();
     await submitStellarTx(signedXdr);
     return c.json({ ready: true });
+  });
+
+  usersRoute.post("/users/:id/kolo-address", async (c) => {
+    const { koloStellarAddress } = await c.req.json<{ koloStellarAddress: string }>();
+    if (!StrKey.isValidEd25519PublicKey(koloStellarAddress)) {
+      return c.json({ error: "koloStellarAddress must be a valid Stellar public key" }, 400);
+    }
+
+    const { rows } = await getPool().query(
+      `UPDATE users SET kolo_stellar_address = $2 WHERE id = $1 RETURNING id`,
+      [c.req.param("id"), koloStellarAddress]
+    );
+    if (!rows[0]) return c.json({ error: "user not found" }, 404);
+
+    return c.json({ koloStellarAddress });
   });
 
   return usersRoute;

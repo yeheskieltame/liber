@@ -1,6 +1,7 @@
 // backend/src/routes/users.test.ts
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
+import { Keypair } from "@stellar/stellar-sdk";
 import { getPool } from "../db/pool.js";
 import { migrate } from "../db/migrate.js";
 import { createUsersRoute } from "./users.js";
@@ -88,4 +89,55 @@ test("POST /users/:id/confirm-trustline submits the signed trustline tx and retu
   const body = await res.json();
   assert.deepEqual(body, { ready: true });
   assert.deepEqual(submittedXdrs, ["SIGNED_TRUSTLINE_XDR"]);
+});
+
+test("POST /users/:id/kolo-address saves a valid Stellar address", async () => {
+  const pool = getPool();
+  const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    `GKOLOUSER${Math.random().toString(36).slice(2)}`,
+  ]);
+  const userId = rows[0].id;
+  const koloAddress = Keypair.random().publicKey();
+
+  const app = createUsersRoute();
+  const res = await app.request(`/users/${userId}/kolo-address`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ koloStellarAddress: koloAddress }),
+  });
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.koloStellarAddress, koloAddress);
+
+  const { rows: check } = await pool.query(`SELECT kolo_stellar_address FROM users WHERE id = $1`, [userId]);
+  assert.equal(check[0].kolo_stellar_address, koloAddress);
+});
+
+test("POST /users/:id/kolo-address rejects an invalid address", async () => {
+  const pool = getPool();
+  const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    `GKOLOUSER${Math.random().toString(36).slice(2)}`,
+  ]);
+  const userId = rows[0].id;
+
+  const app = createUsersRoute();
+  const res = await app.request(`/users/${userId}/kolo-address`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ koloStellarAddress: "not-a-real-address" }),
+  });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /users/:id/kolo-address returns 404 for an unknown user", async () => {
+  const app = createUsersRoute();
+  const res = await app.request("/users/00000000-0000-0000-0000-000000000000/kolo-address", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ koloStellarAddress: Keypair.random().publicKey() }),
+  });
+
+  assert.equal(res.status, 404);
 });
