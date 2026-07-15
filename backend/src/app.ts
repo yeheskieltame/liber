@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { usersRoute } from "./routes/users.js";
 import { balanceRoute } from "./routes/balance.js";
 import { historyRoute } from "./routes/history.js";
+import { quoteRoute } from "./routes/quote.js";
 
 export function createApp() {
   const app = new Hono();
@@ -16,5 +17,6 @@ export function createApp() {
   app.route("/", usersRoute);
   app.route("/", balanceRoute);
   app.route("/", historyRoute);
+  app.route("/", quoteRoute);
   return app;
 }
