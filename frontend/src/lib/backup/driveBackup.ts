@@ -1,5 +1,5 @@
-import { encrypt, decrypt, type EncryptedPayload } from "./crypto.js";
-import { findBackupFile, readBackupFile, createBackupFile, updateBackupFile } from "./googleDrive.js";
+import { encrypt, decrypt, type EncryptedPayload } from "./crypto";
+import { findBackupFile, readBackupFile, createBackupFile, updateBackupFile } from "./googleDrive";
 
 const BACKUP_VERSION = 1;
 
