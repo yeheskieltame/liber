@@ -1,25 +1,44 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageShell } from "@/components/ui/PageShell";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { GradientBalanceCard } from "@/components/ui/GradientBalanceCard";
 import { getBalance } from "@/lib/api";
 
+const FEATURES = [
+  {
+    title: "Dompet Stellar non-custodial",
+    body: "Kunci pribadi kamu tersimpan di perangkat kamu sendiri. Liber tidak pernah menyimpan atau mengakses kunci itu.",
+  },
+  {
+    title: "Scan QRIS, cek kurs",
+    body: "Scan QRIS merchant mana pun, langsung lihat berapa USDC yang setara sebelum kamu bayar.",
+  },
+  {
+    title: "Rute ke kartu Kolo",
+    body: "Kirim USDC ke kartu Kolo kamu, lalu bayar QRIS langsung lewat GoPay pakai kartu itu.",
+  },
+  {
+    title: "Riwayat tercatat",
+    body: "Setiap scan dan top up tersimpan rapi, gampang ditelusuri kapan saja.",
+  },
+];
+
 export default function HomePage() {
-  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
   const [balance, setBalance] = useState<{ usdcBalance: string; idrEstimate: string } | null>(null);
 
   useEffect(() => {
     async function loadHome() {
       const stored = window.localStorage.getItem("liber:userId");
-      if (!stored) {
-        router.push("/onboarding");
-        return;
-      }
       setUserId(stored);
+      setChecked(true);
+      if (!stored) return;
+
       try {
         const result = await getBalance(stored);
         setBalance(result);
@@ -28,9 +47,36 @@ export default function HomePage() {
       }
     }
     loadHome();
-  }, [router]);
+  }, []);
 
-  if (!userId) return null;
+  if (!checked) return null;
+
+  if (!userId) {
+    return (
+      <PageShell>
+        <p className="font-display text-lg italic text-emerald">Liber</p>
+        <h1 className="mt-2 font-display text-3xl italic text-ink">
+          Belanja QRIS langsung dari saldo USDC kamu.
+        </h1>
+        <p className="mt-3 text-sm text-ink/60">
+          Non-custodial, mobile-first. Lihat dulu cara kerjanya di bawah, baru buat wallet kalau sudah yakin.
+        </p>
+
+        <div className="mt-6 flex flex-col gap-3">
+          {FEATURES.map((feature) => (
+            <Card key={feature.title} className="flex flex-col gap-1">
+              <p className="font-semibold text-ink">{feature.title}</p>
+              <p className="text-sm text-ink/60">{feature.body}</p>
+            </Card>
+          ))}
+        </div>
+
+        <Link href="/onboarding" className="mt-6 block">
+          <Button>Buat wallet</Button>
+        </Link>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
