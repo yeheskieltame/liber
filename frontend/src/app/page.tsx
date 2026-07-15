@@ -1,21 +1,68 @@
-export default function Home() {
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { PageShell } from "@/components/ui/PageShell";
+import { GradientBalanceCard } from "@/components/ui/GradientBalanceCard";
+import { getBalance } from "@/lib/api";
+
+export default function HomePage() {
+  const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(null);
+  const [balance, setBalance] = useState<{ usdcBalance: string; idrEstimate: string } | null>(null);
+
+  useEffect(() => {
+    async function loadHome() {
+      const stored = window.localStorage.getItem("liber:userId");
+      if (!stored) {
+        router.push("/onboarding");
+        return;
+      }
+      setUserId(stored);
+      try {
+        const result = await getBalance(stored);
+        setBalance(result);
+      } catch {
+        setBalance({ usdcBalance: "0.00", idrEstimate: "0" });
+      }
+    }
+    loadHome();
+  }, [router]);
+
+  if (!userId) return null;
+
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6">
-      <div className="liber-mesh" aria-hidden="true" />
-      <main className="relative z-10 flex flex-col items-center gap-6 text-center">
-        <span className="rounded-full bg-emerald px-4 py-1 text-sm font-medium text-paper">
-          Liber
-        </span>
-        <h1 className="font-display text-4xl italic text-emerald-deep sm:text-5xl">
-          Sedekah, verified.
-        </h1>
-        <p className="max-w-md font-body text-base text-ink/80">
-          Frontend scaffold is live. Design tokens (
-          <span className="text-gold">gold</span>,{" "}
-          <span className="text-emerald">emerald</span>) and fonts are wired
-          up and ready for the next build steps.
-        </p>
-      </main>
-    </div>
+    <PageShell>
+      <p className="font-display text-lg italic text-ink/70">Halo,</p>
+      <h1 className="font-display text-2xl text-ink">selamat datang kembali.</h1>
+
+      <div className="mt-6">
+        {balance ? (
+          <GradientBalanceCard usdcBalance={balance.usdcBalance} idrEstimate={balance.idrEstimate} />
+        ) : (
+          <div className="h-40 animate-pulse rounded-[28px] bg-ink/5" />
+        )}
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-3">
+        <Link
+          href="/pay"
+          className="flex flex-col items-center justify-center gap-2 rounded-3xl bg-gold p-5 text-center font-semibold text-ink shadow-[0_12px_30px_-12px_rgba(231,163,58,0.65)]"
+        >
+          Scan QRIS
+        </Link>
+        <Link
+          href="/receive"
+          className="flex flex-col items-center justify-center gap-2 rounded-3xl border border-ink/15 p-5 text-center font-semibold text-ink"
+        >
+          Terima USDC
+        </Link>
+      </div>
+
+      <Link href="/history" className="mt-6 text-center text-sm text-ink/50 underline underline-offset-4">
+        Lihat riwayat transaksi
+      </Link>
+    </PageShell>
   );
 }
