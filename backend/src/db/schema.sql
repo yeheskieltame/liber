@@ -40,3 +40,16 @@ DROP TABLE IF EXISTS orders;
 -- CREATE TABLE IF NOT EXISTS is a no-op there. This ALTER is idempotent
 -- additive insurance to make sure the column lands on redeploy too.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kolo_stellar_address TEXT;
+
+-- Cleanup carried over from the treasury-float pivot's schema.sql, which got
+-- dropped when the Kolo-routing pivot replaced this file wholesale. These
+-- columns supported the original IDRX-based onboarding (KYC identity,
+-- bank/e-wallet linkage) and have been dead since the treasury-float pivot
+-- removed IDRX entirely. Idempotent against both a fresh install (columns
+-- never existed) and any already-deployed database still carrying them.
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_user_id;
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_api_key;
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_api_secret;
+ALTER TABLE users DROP COLUMN IF EXISTS idrx_deposit_address;
+ALTER TABLE users DROP COLUMN IF EXISTS provider;
+DROP INDEX IF EXISTS users_idrx_deposit_address_unique;
