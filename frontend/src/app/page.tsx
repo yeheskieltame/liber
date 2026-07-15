@@ -60,6 +60,13 @@ export default function HomePage() {
         </Link>
       </div>
 
+      <Link
+        href="/kolo"
+        className="mt-3 flex items-center justify-center gap-2 rounded-3xl border border-ink/15 p-4 text-center text-sm font-semibold text-ink"
+      >
+        Kelola Kolo
+      </Link>
+
       <Link href="/history" className="mt-6 text-center text-sm text-ink/50 underline underline-offset-4">
         Lihat riwayat transaksi
       </Link>
