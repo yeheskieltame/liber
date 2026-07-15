@@ -2,23 +2,21 @@ export interface CreateUserRequest {
   stellarPublicKey: string;
 }
 
-export interface OrderQuote {
-  orderId: string;
-  merchantName: string;
-  merchantCity: string;
-  amountIdr: string;
+export interface Quote {
   amountUsdc: string;
-  quoteExpiresAt: string;
-  unsignedPaymentXdr: string;
+  rateIdrPerUsdc: string;
+  expiresAt: string;
 }
 
-export interface OrderStatus {
-  state: string;
-  merchantName: string;
-  amountIdr: string;
-  amountUsdc: string;
-  stellarTxHash: string | null;
-  failureReason: string | null;
+export interface HistoryEntry {
+  type: "scan" | "topup";
+  id: string;
+  createdAt: string;
+  merchantName?: string;
+  merchantCity?: string;
+  amountIdr?: string;
+  amountUsdc?: string;
+  stellarTxHash?: string;
 }
 
 function baseUrl(override?: string): string {
@@ -60,32 +58,39 @@ export async function confirmTrustline(
   return postJson(`/users/${userId}/confirm-trustline`, { signedXdr }, fetchImpl, base);
 }
 
-export async function createOrder(
-  req: { userId: string; qrContent: string; amountIdr?: number },
+export async function getQuote(
+  amountIdr: number,
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
-): Promise<OrderQuote> {
-  const path = req.amountIdr != null ? `/orders?amountIdr=${encodeURIComponent(req.amountIdr)}` : "/orders";
-  return postJson(path, req, fetchImpl, base);
+): Promise<Quote> {
+  return postJson("/quote", { amountIdr }, fetchImpl, base);
 }
 
-export async function approveOrder(
-  orderId: string,
-  signedXdr: string,
+export async function saveKoloAddress(
+  userId: string,
+  koloStellarAddress: string,
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
-): Promise<{ state: string; stellarTxHash: string }> {
-  return postJson(`/orders/${orderId}/approve`, { signedXdr }, fetchImpl, base);
+): Promise<{ koloStellarAddress: string }> {
+  return postJson(`/users/${userId}/kolo-address`, { koloStellarAddress }, fetchImpl, base);
 }
 
-export async function getOrder(
-  orderId: string,
+export async function logScan(
+  userId: string,
+  scan: { merchantName: string; merchantCity: string; amountIdr: string; amountUsdc: string },
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
-): Promise<OrderStatus> {
-  const res = await fetchImpl(`${base}/orders/${orderId}`);
-  if (!res.ok) throw new Error(await errorMessage(res, `getOrder failed: ${res.status}`));
-  return res.json();
+): Promise<{ id: string }> {
+  return postJson(`/users/${userId}/scans`, scan, fetchImpl, base);
+}
+
+export async function logTopup(
+  userId: string,
+  topup: { amountUsdc: string; stellarTxHash: string },
+  fetchImpl: typeof fetch = fetch,
+  base = baseUrl()
+): Promise<{ id: string }> {
+  return postJson(`/users/${userId}/topups`, topup, fetchImpl, base);
 }
 
 export async function getBalance(
@@ -98,24 +103,13 @@ export async function getBalance(
   return res.json();
 }
 
-export interface HistoryEntry {
-  orderId: string;
-  merchantName: string;
-  merchantCity: string;
-  amountIdr: string;
-  amountUsdc: string;
-  state: string;
-  stellarTxHash: string | null;
-  createdAt: string;
-}
-
-export async function getOrderHistory(
+export async function getHistory(
   userId: string,
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
 ): Promise<HistoryEntry[]> {
-  const res = await fetchImpl(`${base}/users/${userId}/orders`);
-  if (!res.ok) throw new Error(await errorMessage(res, `getOrderHistory failed: ${res.status}`));
-  const body = (await res.json()) as { orders: HistoryEntry[] };
-  return body.orders;
+  const res = await fetchImpl(`${base}/users/${userId}/history`);
+  if (!res.ok) throw new Error(await errorMessage(res, `getHistory failed: ${res.status}`));
+  const body = (await res.json()) as { entries: HistoryEntry[] };
+  return body.entries;
 }
