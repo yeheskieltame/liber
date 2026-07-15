@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/ui/PageShell";
 import { QrScanner } from "@/components/QrScanner";
@@ -13,7 +13,7 @@ export default function PayPage() {
   const [quote, setQuote] = useState<OrderQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleScan(qrContent: string) {
+  const handleScan = useCallback(async (qrContent: string) => {
     try {
       const parsed = parseQRIS(qrContent);
       const userId = window.localStorage.getItem("liber:userId");
@@ -32,13 +32,13 @@ export default function PayPage() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }
+  }, []);
 
   return (
     <PageShell>
       <h1 className="font-display text-2xl italic text-ink">Scan QRIS</h1>
       <div className="mt-6">
-        {!quote && <QrScanner onScan={handleScan} />}
+        {!quote && <QrScanner onScan={handleScan} onError={setError} />}
         {error && <p className="mt-4 text-center text-sm text-rose">{error}</p>}
         {quote && <QuoteCard quote={quote} onApprove={() => router.push(`/pay/${quote.orderId}`)} />}
       </div>

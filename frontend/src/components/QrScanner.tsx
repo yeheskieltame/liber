@@ -3,7 +3,13 @@
 import { useEffect, useRef } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 
-export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
+export function QrScanner({
+  onScan,
+  onError,
+}: {
+  onScan: (text: string) => void;
+  onError?: (message: string) => void;
+}) {
   const containerId = "qr-reader";
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
@@ -20,12 +26,20 @@ export function QrScanner({ onScan }: { onScan: (text: string) => void }) {
         },
         () => {}
       )
-      .catch((err) => console.error("camera start failed", err));
+      .catch((err) => {
+        console.error("camera start failed", err);
+        onError?.("Tidak bisa mengakses kamera. Periksa izin kamera di browser kamu.");
+      });
 
     return () => {
-      scannerRef.current?.stop().catch(() => {});
+      try {
+        scannerRef.current?.stop().catch(() => {});
+      } catch {
+        // stop() can throw synchronously if called before the scanner fully started
+        // (e.g. component unmounted while the camera permission prompt was still pending)
+      }
     };
-  }, [onScan]);
+  }, [onScan, onError]);
 
   return (
     <div className="relative mx-auto aspect-square w-full max-w-sm overflow-hidden rounded-[28px] bg-ink">
