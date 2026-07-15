@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Account, Keypair, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
-import { buildOnboardingTxFromAccount, buildTrustlineTxFromAccount } from "./account.js";
+import { buildOnboardingTxFromAccount, buildTrustlineTxFromAccount, buildPaymentTxFromAccount } from "./account.js";
 
 test("buildOnboardingTxFromAccount produces a signed createAccount operation with the right starting balance", () => {
   const funding = Keypair.random();
@@ -32,5 +32,26 @@ test("buildTrustlineTxFromAccount produces an unsigned changeTrust operation for
   assert.equal(op.type, "changeTrust");
   assert.equal(op.line.code, "USDC");
   assert.equal(op.line.issuer, process.env.USDC_ISSUER);
+  assert.equal(tx.signatures.length, 0);
+});
+
+test("buildPaymentTxFromAccount produces an unsigned USDC payment to the destination", () => {
+  const source = Keypair.random();
+  const destination = Keypair.random();
+  const sourceAccount = new Account(source.publicKey(), "100");
+
+  const { unsignedXdr } = buildPaymentTxFromAccount(sourceAccount, {
+    destinationPublicKey: destination.publicKey(),
+    amountUsdc: "2.02",
+  });
+
+  const tx = TransactionBuilder.fromXDR(unsignedXdr, process.env.STELLAR_NETWORK_PASSPHRASE!);
+  assert.equal(tx.operations.length, 1);
+  const op = tx.operations[0] as any;
+  assert.equal(op.type, "payment");
+  assert.equal(op.destination, destination.publicKey());
+  assert.equal(op.asset.code, "USDC");
+  assert.equal(op.asset.issuer, process.env.USDC_ISSUER);
+  assert.equal(op.amount, "2.0200000");
   assert.equal(tx.signatures.length, 0);
 });

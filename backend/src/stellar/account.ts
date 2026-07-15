@@ -53,3 +53,29 @@ export async function buildTrustlineTx(params: { accountPublicKey: string }): Pr
   const sourceAccount = await server().loadAccount(params.accountPublicKey);
   return buildTrustlineTxFromAccount(sourceAccount);
 }
+
+export function buildPaymentTxFromAccount(
+  sourceAccount: Account,
+  params: { destinationPublicKey: string; amountUsdc: string }
+): { unsignedXdr: string } {
+  const tx = new TransactionBuilder(sourceAccount, { fee: BASE_FEE, networkPassphrase: NETWORK_PASSPHRASE() })
+    .addOperation(Operation.payment({ destination: params.destinationPublicKey, asset: USDC(), amount: params.amountUsdc }))
+    .setTimeout(30)
+    .build();
+  return { unsignedXdr: tx.toXDR() };
+}
+
+export async function buildPaymentTx(params: {
+  fromAccountAddress: string;
+  destinationPublicKey: string;
+  amountUsdc: string;
+}): Promise<{ unsignedXdr: string }> {
+  const sourceAccount = await server().loadAccount(params.fromAccountAddress);
+  return buildPaymentTxFromAccount(sourceAccount, params);
+}
+
+export async function submitStellarTx(signedXdr: string): Promise<{ hash: string }> {
+  const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE());
+  const response = await server().submitTransaction(tx);
+  return { hash: response.hash };
+}
