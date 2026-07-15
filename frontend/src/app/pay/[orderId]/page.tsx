@@ -17,17 +17,23 @@ export default function OrderPage() {
 
   useEffect(() => {
     async function approve() {
+      // Guard against re-triggering the sign+approve flow on remount (e.g. a page refresh
+      // while the bridge is still settling). If the order has already moved past "quoted",
+      // it was already approved in a previous load — just show its current status instead
+      // of re-signing and re-submitting.
+      let currentStatus;
       try {
-        // Guard against re-triggering the sign+approve flow on remount (e.g. a page refresh
-        // while the bridge is still settling). If the order has already moved past "quoted",
-        // it was already approved in a previous load — just show its current status instead
-        // of re-signing and re-submitting.
-        const currentStatus = await getOrder(orderId);
-        if (currentStatus.state !== "quoted") {
-          setApproved(true);
-          return;
-        }
+        currentStatus = await getOrder(orderId);
+      } catch {
+        setError("Tidak bisa memeriksa status pesanan. Periksa koneksi internet kamu atau coba scan ulang QRIS-nya.");
+        return;
+      }
+      if (currentStatus.state !== "quoted") {
+        setApproved(true);
+        return;
+      }
 
+      try {
         const unsignedXdr = window.sessionStorage.getItem(`liber:pendingBridgeXdr:${orderId}`);
         if (!unsignedXdr) throw new Error("Sesi kadaluarsa, scan ulang QRIS-nya.");
 
@@ -48,7 +54,7 @@ export default function OrderPage() {
       <h1 className="font-display text-2xl italic text-ink">Status pembayaran</h1>
       <div className="mt-6">
         {error && <p className="text-center text-sm text-rose">{error}</p>}
-        {!error && !approved && <p className="text-center text-sm text-ink/60">Menandatangani transaksi...</p>}
+        {!error && !approved && <p className="text-center text-sm text-ink/60">Memproses...</p>}
         {!error && approved && <OrderStatus orderId={orderId} />}
       </div>
     </PageShell>
