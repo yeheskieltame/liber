@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Account, StrKey, Horizon, TransactionBuilder } from "@stellar/stellar-sdk";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
@@ -15,6 +16,7 @@ const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const KOLO_ADDRESS_KEY = "liber:koloAddress";
 
 export default function KoloPage() {
+  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [koloAddress, setKoloAddress] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -25,11 +27,16 @@ export default function KoloPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    setUserId(window.localStorage.getItem("liber:userId"));
+    const stored = window.localStorage.getItem("liber:userId");
+    if (!stored) {
+      router.push("/onboarding");
+      return;
+    }
+    setUserId(stored);
     setKoloAddress(window.localStorage.getItem(KOLO_ADDRESS_KEY));
-  }, []);
+  }, [router]);
 
-  async function handleConnect(address: string) {
+  function handleConnect(address: string) {
     setError(null);
     if (!StrKey.isValidEd25519PublicKey(address)) {
       setError("Alamat Kolo tidak valid. Pastikan ini alamat Stellar (diawali G).");
@@ -37,16 +44,10 @@ export default function KoloPage() {
     }
     if (!userId) return;
 
-    setSubmitting(true);
-    try {
-      await saveKoloAddress(userId, address);
-      window.localStorage.setItem(KOLO_ADDRESS_KEY, address);
-      setKoloAddress(address);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSubmitting(false);
-    }
+    window.localStorage.setItem(KOLO_ADDRESS_KEY, address);
+    setKoloAddress(address);
+
+    saveKoloAddress(userId, address).catch((err) => console.error("failed to save Kolo address to backend", err));
   }
 
   async function handleTopUp() {
@@ -55,6 +56,11 @@ export default function KoloPage() {
     const amountUsdc = Number(amountInput);
     if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
       setError("Nominal tidak valid. Masukkan angka lebih dari 0.");
+      return;
+    }
+    const amountUsdcRounded = (Math.floor(amountUsdc * 100) / 100).toFixed(2);
+    if (Number(amountUsdcRounded) <= 0) {
+      setError("Nominal terlalu kecil. Masukkan minimal 0.01 USDC.");
       return;
     }
     if (!userId || !koloAddress) return;
@@ -69,15 +75,15 @@ export default function KoloPage() {
 
       const { unsignedXdr } = buildTopUpTx(sourceAccount, {
         destinationPublicKey: koloAddress,
-        amountUsdc: amountUsdc.toFixed(2),
+        amountUsdc: amountUsdcRounded,
         networkPassphrase: NETWORK_PASSPHRASE,
       });
       const signedXdr = signXdr(wallet.secretKey, unsignedXdr, NETWORK_PASSPHRASE);
       const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
       const response = await server.submitTransaction(tx);
 
-      await logTopup(userId, { amountUsdc: amountUsdc.toFixed(2), stellarTxHash: response.hash });
-      setSuccess(`Berhasil kirim ${amountUsdc.toFixed(2)} USDC ke Kolo.`);
+      await logTopup(userId, { amountUsdc: amountUsdcRounded, stellarTxHash: response.hash });
+      setSuccess(`Berhasil kirim ${amountUsdcRounded} USDC ke Kolo.`);
       setAmountInput("");
     } catch (err) {
       setError((err as Error).message);
@@ -113,8 +119,8 @@ export default function KoloPage() {
                 placeholder="Alamat Stellar Kolo (G...)"
                 className="w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald"
               />
-              <Button onClick={() => handleConnect(addressInput)} disabled={submitting || !addressInput}>
-                {submitting ? "Menghubungkan..." : "Hubungkan"}
+              <Button onClick={() => handleConnect(addressInput)} disabled={!addressInput}>
+                Hubungkan
               </Button>
               <Button variant="ghost" onClick={() => setScanning(true)}>
                 Scan QR Kolo

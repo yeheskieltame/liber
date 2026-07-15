@@ -33,3 +33,10 @@ CREATE INDEX IF NOT EXISTS kolo_topups_user_id_idx ON kolo_topups(user_id);
 -- against both a fresh install (table never existed) and the already-
 -- deployed Railway database (table existed, now removed).
 DROP TABLE IF EXISTS orders;
+
+-- kolo_stellar_address is declared in CREATE TABLE users above for a fresh
+-- install, but production's users table already existed before this column
+-- was introduced (from the earlier treasury-float deploy), so
+-- CREATE TABLE IF NOT EXISTS is a no-op there. This ALTER is idempotent
+-- additive insurance to make sure the column lands on redeploy too.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS kolo_stellar_address TEXT;

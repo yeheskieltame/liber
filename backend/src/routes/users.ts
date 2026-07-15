@@ -20,7 +20,7 @@ const defaultDeps: UsersRouteDeps = {
   submitStellarTx: defaultSubmitStellarTx,
 };
 
-const STARTING_BALANCE_XLM = "1.5"; // covers base reserve (~1 XLM) + USDC trustline reserve (~0.5 XLM)
+const STARTING_BALANCE_XLM = "2"; // base reserve (~1 XLM) + USDC trustline reserve (~0.5 XLM) + fee buffer for the user's own future transactions (e.g. Kolo top-ups)
 
 export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
   const { buildOnboardingTx, buildTrustlineTx, submitStellarTx } = { ...defaultDeps, ...deps };
