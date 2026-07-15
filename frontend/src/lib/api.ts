@@ -17,7 +17,7 @@ export interface OrderQuote {
   amountIdr: string;
   amountUsdc: string;
   quoteExpiresAt: string;
-  unsignedBridgeXdr: string;
+  unsignedPaymentXdr: string;
 }
 
 export interface OrderStatus {
@@ -27,7 +27,6 @@ export interface OrderStatus {
   amountUsdc: string;
   stellarTxHash: string | null;
   failureReason: string | null;
-  ewalletHandoff: { appLink: string | null; qrContent: string };
 }
 
 function baseUrl(override?: string): string {

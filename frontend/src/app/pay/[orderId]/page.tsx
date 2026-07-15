@@ -18,7 +18,7 @@ export default function OrderPage() {
   useEffect(() => {
     async function approve() {
       // Guard against re-triggering the sign+approve flow on remount (e.g. a page refresh
-      // while the bridge is still settling). If the order has already moved past "quoted",
+      // while the payment is still settling). If the order has already moved past "quoted",
       // it was already approved in a previous load — just show its current status instead
       // of re-signing and re-submitting.
       let currentStatus;
@@ -34,13 +34,13 @@ export default function OrderPage() {
       }
 
       try {
-        const unsignedXdr = window.sessionStorage.getItem(`liber:pendingBridgeXdr:${orderId}`);
+        const unsignedXdr = window.sessionStorage.getItem(`liber:pendingPaymentXdr:${orderId}`);
         if (!unsignedXdr) throw new Error("Sesi kadaluarsa, scan ulang QRIS-nya.");
 
         const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
         const signedXdr = signXdr(wallet.secretKey, unsignedXdr, NETWORK_PASSPHRASE);
         await approveOrder(orderId, signedXdr);
-        window.sessionStorage.removeItem(`liber:pendingBridgeXdr:${orderId}`);
+        window.sessionStorage.removeItem(`liber:pendingPaymentXdr:${orderId}`);
         setApproved(true);
       } catch (err) {
         setError((err as Error).message);

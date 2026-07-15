@@ -31,7 +31,7 @@ export default function PayPage() {
       }
 
       const result = await createOrder({ userId, qrContent, amountIdr });
-      window.sessionStorage.setItem(`liber:pendingBridgeXdr:${result.orderId}`, result.unsignedBridgeXdr);
+      window.sessionStorage.setItem(`liber:pendingPaymentXdr:${result.orderId}`, result.unsignedPaymentXdr);
       setQuote(result);
     } catch (err) {
       setError((err as Error).message);

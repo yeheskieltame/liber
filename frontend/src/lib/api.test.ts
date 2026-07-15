@@ -15,7 +15,7 @@ test("createOrder posts to /orders and returns the parsed quote", async () => {
         amountIdr: "25000",
         amountUsdc: "1.58",
         quoteExpiresAt: "2026-07-15T00:00:30.000Z",
-        unsignedBridgeXdr: "FAKE_XDR",
+        unsignedPaymentXdr: "FAKE_XDR",
       }),
       { status: 201 }
     );
@@ -24,7 +24,7 @@ test("createOrder posts to /orders and returns the parsed quote", async () => {
   const result = await createOrder({ userId: "u1", qrContent: "0002..." }, fakeFetch as typeof fetch, "http://backend.test");
 
   assert.equal(result.orderId, "o1");
-  assert.equal(result.unsignedBridgeXdr, "FAKE_XDR");
+  assert.equal(result.unsignedPaymentXdr, "FAKE_XDR");
 });
 
 test("createOrder includes amountIdr as query parameter for static QRIS", async () => {
@@ -43,7 +43,7 @@ test("createOrder includes amountIdr as query parameter for static QRIS", async 
         amountIdr: "25000",
         amountUsdc: "1.58",
         quoteExpiresAt: "2026-07-15T00:00:30.000Z",
-        unsignedBridgeXdr: "FAKE_XDR_2",
+        unsignedPaymentXdr: "FAKE_XDR_2",
       }),
       { status: 201 }
     );
@@ -56,7 +56,7 @@ test("createOrder includes amountIdr as query parameter for static QRIS", async 
   );
 
   assert.equal(result.orderId, "o2");
-  assert.equal(result.unsignedBridgeXdr, "FAKE_XDR_2");
+  assert.equal(result.unsignedPaymentXdr, "FAKE_XDR_2");
 });
 
 test("createOrder surfaces the backend's error message on a non-OK response", async () => {
