@@ -10,7 +10,7 @@ const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
 
 type Props =
   | { mode: "backup"; secretKey: string; onBackupSuccess?: () => void }
-  | { mode: "restore"; onRestoreSuccess: (secretKey: string) => void };
+  | { mode: "restore"; onRestoreSuccess: (secretKey: string) => void | Promise<void> };
 
 function describeError(err: unknown): string | null {
   if (err instanceof GoogleSignInCancelledError) return null;
@@ -73,9 +73,9 @@ export function GoogleDriveBackupCard(props: Props) {
     try {
       const accessToken = await requestAccessToken(GOOGLE_CLIENT_ID);
       const secretKey = await restoreFromGoogleDrive(accessToken, passphrase);
+      await props.onRestoreSuccess(secretKey);
       setSuccess(true);
       setPassphrase("");
-      props.onRestoreSuccess(secretKey);
     } catch (err) {
       setError(describeError(err));
     } finally {
