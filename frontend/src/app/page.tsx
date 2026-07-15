@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Logo } from "@/components/Logo";
-import { HeroGraphic } from "@/components/HeroGraphic";
 import { ScanIcon, ProfileIcon, HistoryIcon } from "@/components/icons";
 
 const STEPS = [
@@ -16,12 +16,12 @@ const STEPS = [
   {
     Icon: ProfileIcon,
     title: "Route to Kolo",
-    body: "Send that USDC to your own Kolo card over Stellar. It lands in seconds — no bridging, no bank in the middle.",
+    body: "Send that USDC to your own Kolo card over Stellar. It lands in seconds, no bridging, no bank in the middle.",
   },
   {
     Icon: HistoryIcon,
     title: "Pay in GoPay",
-    body: "Open GoPay, scan the same code, and pay with your linked Kolo card. Liber never touches the payment — you're always in control.",
+    body: "Open GoPay, scan the same code, and pay with your linked Kolo card. Liber never touches the payment, you're always in control.",
   },
 ] as const;
 
@@ -60,7 +60,7 @@ export default function LandingPage() {
             </h1>
             <p className="fade-up mt-5 text-base text-ink/60 md:text-lg" style={{ animationDelay: "160ms" }}>
               A non-custodial Stellar wallet for Indonesia. Scan any QRIS merchant, see the live USDC price, and
-              settle instantly through your own Kolo card — no bank transfer, no manual steps.
+              settle instantly through your own Kolo card, no bank transfer, no manual steps.
             </p>
             <div className="fade-up mt-8 flex flex-col items-center gap-3 md:items-start" style={{ animationDelay: "240ms" }}>
               <Link
@@ -73,7 +73,28 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <HeroGraphic className="fade-up w-full max-w-[280px] shrink-0 md:max-w-[360px]" style={{ animationDelay: "320ms" }} />
+          <div
+            className="fade-up w-full max-w-[320px] shrink-0 overflow-hidden rounded-[28px] border-4 border-ink shadow-[10px_10px_0_rgba(16,30,26,0.85)] md:max-w-[380px]"
+            style={{ animationDelay: "320ms" }}
+          >
+            <Image src="/illustrations/hero-success.jpg" alt="A vendor paying with QRIS through Liber" width={760} height={760} className="h-auto w-full" priority />
+          </div>
+        </section>
+
+        <section className="mt-20 md:mt-28">
+          <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 text-center md:flex-row md:text-left">
+            <div className="w-full max-w-[240px] shrink-0 overflow-hidden rounded-[24px] border-4 border-ink shadow-[8px_8px_0_rgba(16,30,26,0.85)]">
+              <Image src="/illustrations/problem-hook.jpg" alt="Crypto stuck behind a wall, unable to reach a coffee shop" width={600} height={600} className="h-auto w-full" />
+            </div>
+            <div>
+              <h2 className="font-display text-2xl italic text-ink md:text-3xl">The wall crypto hits every day.</h2>
+              <p className="mt-3 text-sm text-ink/60 md:text-base">
+                Your USDC is real money, but no QRIS merchant takes it directly. Selling it on an exchange, waiting
+                for a bank transfer, then spending rupiah turns a coffee into a multi-day errand. Liber skips that
+                entirely.
+              </p>
+            </div>
+          </div>
         </section>
 
         <section className="mt-24 md:mt-32">

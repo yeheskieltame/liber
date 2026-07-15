@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { HomeIcon, ScanIcon, ProfileIcon, HistoryIcon } from "@/components/icons";
+import { HomeIcon, ScanIcon, ProfileIcon, HistoryIcon, SettingsIcon } from "@/components/icons";
 
 const TABS = [
   { href: "/home", label: "Home", Icon: HomeIcon, center: false },
+  { href: "/history", label: "History", Icon: HistoryIcon, center: false },
   { href: "/pay", label: "Scan", Icon: ScanIcon, center: true },
   { href: "/profile", label: "Profile", Icon: ProfileIcon, center: false },
-  { href: "/history", label: "History", Icon: HistoryIcon, center: false },
+  { href: "/settings", label: "Settings", Icon: SettingsIcon, center: false },
 ] as const;
 
 export function BottomNav() {

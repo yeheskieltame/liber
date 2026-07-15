@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import Image from "next/image";
 import { Account, StrKey, Horizon, TransactionBuilder } from "@stellar/stellar-sdk";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
@@ -124,22 +125,39 @@ export default function ProfilePage() {
       <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-ink/50">Kolo Card</p>
 
       {!koloAddress && (
-        <Card className="mt-3 flex flex-col gap-3 bg-emerald/5">
+        <Card className="mt-3 flex flex-col gap-4 bg-emerald/5">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-deep">New to Kolo?</p>
-          <ol className="flex flex-col gap-2 text-sm text-ink/70">
-            <li className="flex gap-2.5">
-              <span className="font-display italic text-emerald">1</span>
-              Sign up for a Kolo card and grab its Stellar deposit address.
-            </li>
-            <li className="flex gap-2.5">
-              <span className="font-display italic text-emerald">2</span>
-              In the GoPay app, link that Kolo Visa card under payment methods.
-            </li>
-            <li className="flex gap-2.5">
-              <span className="font-display italic text-emerald">3</span>
-              Paste the Kolo Stellar address below to connect it here.
-            </li>
-          </ol>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+                <Image src="/logos/kolo-logo.png" alt="Kolo" width={26} height={26} className="rounded-full" />
+              </span>
+              <p className="text-sm text-ink/70">
+                <span className="font-semibold text-ink">1. Sign up for Kolo.</span> Get your card and its Stellar
+                deposit address.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center gap-0.5 rounded-full bg-white shadow-sm">
+                <Image src="/logos/gopay-logo.png" alt="GoPay" width={16} height={16} className="object-contain" />
+                <Image src="/logos/dana-logo.png" alt="DANA" width={16} height={16} className="rounded object-contain" />
+              </span>
+              <p className="text-sm text-ink/70">
+                <span className="font-semibold text-ink">2. Link the card.</span> In GoPay or DANA, add that Kolo
+                Visa card under payment methods.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald text-white shadow-sm">
+                <span className="font-display text-sm italic">3</span>
+              </span>
+              <p className="text-sm text-ink/70">
+                <span className="font-semibold text-ink">Connect here.</span> Paste or scan the Kolo address below.
+              </p>
+            </div>
+          </div>
+
           <a
             href="https://kolo.xyz"
             target="_blank"
@@ -154,7 +172,7 @@ export default function ProfilePage() {
       {!koloAddress ? (
         <Card className="mt-3 flex flex-col gap-4">
           <p className="text-sm text-ink/60">
-            Connect your Kolo Stellar address. USDC sent there can be spent immediately through your Kolo card linked to GoPay.
+            Connect your Kolo Stellar address. USDC sent there can be spent immediately through your Kolo card linked to GoPay or DANA.
           </p>
           {scanning ? (
             <QrScanner

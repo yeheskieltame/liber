@@ -49,6 +49,17 @@ export async function createUser(
   return postJson("/users", req, fetchImpl, base);
 }
 
+export async function getUserIdByKey(
+  stellarPublicKey: string,
+  fetchImpl: typeof fetch = fetch,
+  base = baseUrl()
+): Promise<{ userId: string } | null> {
+  const res = await fetchImpl(`${base}/users/by-key/${stellarPublicKey}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(await errorMessage(res, `getUserIdByKey failed: ${res.status}`));
+  return res.json();
+}
+
 export async function confirmTrustline(
   userId: string,
   signedXdr: string,
