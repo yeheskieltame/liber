@@ -1,13 +1,5 @@
 export interface CreateUserRequest {
   stellarPublicKey: string;
-  email: string;
-  fullname: string;
-  address: string;
-  idNumber: string;
-  idFileBase64: string;
-  bankAccountNumber: string;
-  bankCode: string;
-  provider: "gopay" | "dana" | "ovo" | "other";
 }
 
 export interface OrderQuote {

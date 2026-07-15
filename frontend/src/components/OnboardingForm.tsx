@@ -11,45 +11,18 @@ import { Button } from "@/components/ui/Button";
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const USER_ID_KEY = "liber:userId";
 
-const PROVIDERS = [
-  { value: "gopay", label: "GoPay" },
-  { value: "dana", label: "DANA" },
-  { value: "ovo", label: "OVO" },
-  { value: "other", label: "Bank lain" },
-] as const;
-
-const inputClass =
-  "w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald";
-
 export function OnboardingForm() {
   const router = useRouter();
-  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>("gopay");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function handleCreate() {
     setSubmitting(true);
     setError(null);
 
     try {
-      const form = new FormData(e.currentTarget);
-      const idFile = form.get("idFile") as File;
-      const idFileBase64 = Buffer.from(await idFile.arrayBuffer()).toString("base64");
-
       const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
-
-      const { userId, unsignedTrustlineXdr } = await createUser({
-        stellarPublicKey: wallet.publicKey,
-        email: String(form.get("email")),
-        fullname: String(form.get("fullname")),
-        address: String(form.get("address")),
-        idNumber: String(form.get("idNumber")),
-        idFileBase64,
-        bankAccountNumber: String(form.get("bankAccountNumber")),
-        bankCode: String(form.get("bankCode")),
-        provider,
-      });
+      const { userId, unsignedTrustlineXdr } = await createUser({ stellarPublicKey: wallet.publicKey });
 
       const signedXdr = signXdr(wallet.secretKey, unsignedTrustlineXdr, NETWORK_PASSPHRASE);
       await confirmTrustline(userId, signedXdr);
@@ -64,44 +37,18 @@ export function OnboardingForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <Card className="flex flex-col gap-4">
-        <input name="email" type="email" placeholder="Email" required className={inputClass} />
-        <input name="fullname" placeholder="Nama lengkap" required className={inputClass} />
-        <input name="address" placeholder="Alamat" required className={inputClass} />
-        <input name="idNumber" placeholder="NIK" required className={inputClass} />
-        <label className="text-xs text-ink/60">
-          Foto KTP
-          <input name="idFile" type="file" accept="image/*" required className={`${inputClass} mt-1`} />
-        </label>
-
-        <div>
-          <p className="mb-2 text-xs font-medium text-ink/60">Terima Rupiah lewat</p>
-          <div className="flex flex-wrap gap-2">
-            {PROVIDERS.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setProvider(p.value)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                  provider === p.value ? "bg-emerald text-white" : "bg-paper text-ink/70"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <input name="bankAccountNumber" placeholder="Nomor rekening/HP" required className={inputClass} />
-        <input name="bankCode" placeholder="Kode bank (mis. GOPAY)" required className={inputClass} />
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-2 text-center">
+        <p className="text-sm text-ink/60">
+          Kami akan membuat dompet Stellar baru untukmu dan menyiapkannya untuk menerima USDC.
+        </p>
       </Card>
 
       {error && <p className="text-sm text-rose">{error}</p>}
 
-      <Button type="submit" disabled={submitting}>
-        {submitting ? "Memproses..." : "Buat akun"}
+      <Button onClick={handleCreate} disabled={submitting}>
+        {submitting ? "Memproses..." : "Buat wallet"}
       </Button>
-    </form>
+    </div>
   );
 }
