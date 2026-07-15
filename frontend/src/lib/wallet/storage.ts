@@ -1,4 +1,4 @@
-import { generateKeypair } from "./keypair.js";
+import { generateKeypair } from "./keypair";
 
 export interface WalletStorage {
   get(key: string): Promise<string | null>;
