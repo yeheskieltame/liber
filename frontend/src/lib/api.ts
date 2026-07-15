@@ -66,7 +66,8 @@ export async function createOrder(
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
 ): Promise<OrderQuote> {
-  return postJson("/orders", req, fetchImpl, base);
+  const path = req.amountIdr != null ? `/orders?amountIdr=${encodeURIComponent(req.amountIdr)}` : "/orders";
+  return postJson(path, req, fetchImpl, base);
 }
 
 export async function approveOrder(
