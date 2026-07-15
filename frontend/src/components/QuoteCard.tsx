@@ -1,31 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { OrderQuote } from "@/lib/api";
+import type { Quote } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
 const QUOTE_WINDOW_SECONDS = 30;
 
-export function QuoteCard({ quote, onApprove }: { quote: OrderQuote; onApprove: () => void }) {
+export function QuoteCard({
+  merchantName,
+  merchantCity,
+  amountIdr,
+  quote,
+}: {
+  merchantName: string;
+  merchantCity: string;
+  amountIdr: string;
+  quote: Quote;
+}) {
   const [secondsLeft, setSecondsLeft] = useState(QUOTE_WINDOW_SECONDS);
 
   useEffect(() => {
-    const expiresAt = new Date(quote.quoteExpiresAt).getTime();
+    const expiresAt = new Date(quote.expiresAt).getTime();
     const interval = setInterval(() => {
       setSecondsLeft(Math.max(0, Math.round((expiresAt - Date.now()) / 1000)));
     }, 500);
     return () => clearInterval(interval);
-  }, [quote.quoteExpiresAt]);
+  }, [quote.expiresAt]);
 
   return (
     <Card className="flex flex-col gap-4">
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-ink/50">
-          {quote.merchantName} &middot; {quote.merchantCity}
+          {merchantName} &middot; {merchantCity}
         </p>
         <p className="mt-2 font-display text-4xl italic text-ink tabular-nums">
-          Rp {Number(quote.amountIdr).toLocaleString("id-ID")}
+          Rp {Number(amountIdr).toLocaleString("id-ID")}
         </p>
         <p className="mt-1 text-sm text-ink/60 tabular-nums">setara {quote.amountUsdc} USDC</p>
       </div>
@@ -37,12 +47,15 @@ export function QuoteCard({ quote, onApprove }: { quote: OrderQuote; onApprove: 
             style={{ width: `${(secondsLeft / QUOTE_WINDOW_SECONDS) * 100}%` }}
           />
         </div>
-        <p className="mt-1 text-xs text-ink/40">Kuotasi berlaku {secondsLeft} detik lagi</p>
+        <p className="mt-1 text-xs text-ink/40">Kurs berlaku {secondsLeft} detik lagi</p>
       </div>
 
-      <Button onClick={onApprove} disabled={secondsLeft <= 0}>
-        Bayar sekarang
-      </Button>
+      <a href="gojek://gopay" className="w-full">
+        <Button>Buka GoPay</Button>
+      </a>
+      <p className="text-center text-xs text-ink/40">
+        Scan QRIS yang sama di GoPay, lalu bayar pakai kartu Kolo yang sudah kamu link.
+      </p>
     </Card>
   );
 }
