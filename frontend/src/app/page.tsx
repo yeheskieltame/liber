@@ -48,21 +48,21 @@ export default function LandingPage() {
       <div className="liber-mesh" />
 
       <div className="relative mx-auto flex max-w-5xl flex-col px-6 py-8 md:px-12 md:py-12">
-        <header className="flex items-center gap-2.5">
+        <header className="fade-up flex items-center gap-2.5">
           <Logo className="h-8 w-8" />
           <span className="font-display text-lg italic text-emerald">Liber</span>
         </header>
 
         <section className="mt-12 flex flex-col items-center gap-10 md:mt-20 md:flex-row md:items-center md:gap-16">
           <div className="max-w-xl text-center md:text-left">
-            <h1 className="font-display text-4xl leading-tight text-ink md:text-6xl">
+            <h1 className="fade-up font-display text-4xl leading-tight text-ink md:text-6xl" style={{ animationDelay: "80ms" }}>
               Spend QRIS <span className="italic text-emerald">straight from USDC.</span>
             </h1>
-            <p className="mt-5 text-base text-ink/60 md:text-lg">
+            <p className="fade-up mt-5 text-base text-ink/60 md:text-lg" style={{ animationDelay: "160ms" }}>
               A non-custodial Stellar wallet for Indonesia. Scan any QRIS merchant, see the live USDC price, and
               settle instantly through your own Kolo card — no bank transfer, no manual steps.
             </p>
-            <div className="mt-8 flex flex-col items-center gap-3 md:items-start">
+            <div className="fade-up mt-8 flex flex-col items-center gap-3 md:items-start" style={{ animationDelay: "240ms" }}>
               <Link
                 href="/onboarding"
                 className="rounded-full bg-gold px-8 py-4 text-base font-semibold text-ink shadow-[0_12px_30px_-12px_rgba(231,163,58,0.65)] transition active:scale-[0.98]"
@@ -73,7 +73,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <HeroGraphic className="w-full max-w-[280px] shrink-0 md:max-w-[360px]" />
+          <HeroGraphic className="fade-up w-full max-w-[280px] shrink-0 md:max-w-[360px]" style={{ animationDelay: "320ms" }} />
         </section>
 
         <section className="mt-24 md:mt-32">

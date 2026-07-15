@@ -52,3 +52,22 @@ export function HistoryIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function SendIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M6 18 18 6" />
+      <path d="M9 6h9v9" />
+    </Icon>
+  );
+}
+
+export function ReceiveIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4v12" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M5 20h14" />
+    </Icon>
+  );
+}

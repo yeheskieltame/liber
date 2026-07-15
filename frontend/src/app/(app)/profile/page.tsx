@@ -123,6 +123,34 @@ export default function ProfilePage() {
 
       <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-ink/50">Kolo Card</p>
 
+      {!koloAddress && (
+        <Card className="mt-3 flex flex-col gap-3 bg-emerald/5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-deep">New to Kolo?</p>
+          <ol className="flex flex-col gap-2 text-sm text-ink/70">
+            <li className="flex gap-2.5">
+              <span className="font-display italic text-emerald">1</span>
+              Sign up for a Kolo card and grab its Stellar deposit address.
+            </li>
+            <li className="flex gap-2.5">
+              <span className="font-display italic text-emerald">2</span>
+              In the GoPay app, link that Kolo Visa card under payment methods.
+            </li>
+            <li className="flex gap-2.5">
+              <span className="font-display italic text-emerald">3</span>
+              Paste the Kolo Stellar address below to connect it here.
+            </li>
+          </ol>
+          <a
+            href="https://kolo.xyz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-center text-sm font-semibold text-emerald underline underline-offset-4"
+          >
+            Sign up at kolo.xyz
+          </a>
+        </Card>
+      )}
+
       {!koloAddress ? (
         <Card className="mt-3 flex flex-col gap-4">
           <p className="text-sm text-ink/60">

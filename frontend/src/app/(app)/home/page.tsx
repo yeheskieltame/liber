@@ -6,6 +6,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { GradientBalanceCard } from "@/components/ui/GradientBalanceCard";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { ScanIcon, SendIcon, ReceiveIcon } from "@/components/icons";
 import { getBalance, getHistory, type HistoryEntry } from "@/lib/api";
 
 const USER_ID_KEY = "liber:userId";
@@ -41,8 +42,9 @@ export default function HomePage() {
 
       <Link
         href="/profile"
-        className="mt-4 flex items-center justify-center rounded-3xl border border-ink/15 p-4 text-center text-sm font-semibold text-ink"
+        className="mt-4 flex items-center justify-center gap-2 rounded-3xl border border-ink/15 p-4 text-center text-sm font-semibold text-ink transition active:scale-[0.98]"
       >
+        <ReceiveIcon className="h-5 w-5 text-emerald" />
         Receive USDC
       </Link>
 
@@ -57,8 +59,11 @@ export default function HomePage() {
         {recent.length === 0 && <p className="text-sm text-ink/40">No activity yet.</p>}
         {recent.map((entry) => (
           <li key={entry.id}>
-            <Card className="flex items-center justify-between gap-3">
-              <div>
+            <Card className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald/10 text-emerald">
+                {entry.type === "scan" ? <ScanIcon className="h-4 w-4" /> : <SendIcon className="h-4 w-4" />}
+              </span>
+              <div className="flex-1">
                 <p className="font-medium text-ink">{entry.type === "scan" ? entry.merchantName : "Kolo top-up"}</p>
                 <p className="text-xs text-ink/40">{new Date(entry.createdAt).toLocaleDateString("en-GB")}</p>
               </div>

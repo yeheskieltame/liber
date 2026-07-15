@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { PageShell } from "@/components/ui/PageShell";
+import { Button } from "@/components/ui/Button";
 import { QrScanner } from "@/components/QrScanner";
 import { QuoteCard } from "@/components/QuoteCard";
 import { parseQRIS } from "@/lib/qris/parser";
@@ -55,7 +56,19 @@ export default function PayPage() {
         {!quote && <QrScanner onScan={handleScan} onError={setError} />}
         {error && <p className="mt-4 text-center text-sm text-rose">{error}</p>}
         {quote && merchant && (
-          <QuoteCard merchantName={merchant.name} merchantCity={merchant.city} amountIdr={merchant.amountIdr} quote={quote} />
+          <div className="flex flex-col gap-3">
+            <QuoteCard merchantName={merchant.name} merchantCity={merchant.city} amountIdr={merchant.amountIdr} quote={quote} />
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setQuote(null);
+                setMerchant(null);
+                setError(null);
+              }}
+            >
+              Scan Another Code
+            </Button>
+          </div>
         )}
       </div>
     </PageShell>

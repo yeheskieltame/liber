@@ -1,6 +1,8 @@
-export function HeroGraphic({ className = "" }: { className?: string }) {
+import type { CSSProperties } from "react";
+
+export function HeroGraphic({ className = "", style }: { className?: string; style?: CSSProperties }) {
   return (
-    <svg viewBox="0 0 360 360" fill="none" className={className}>
+    <svg viewBox="0 0 360 360" fill="none" className={className} style={style}>
       <circle cx="180" cy="180" r="170" fill="url(#hero-glow)" opacity="0.5" />
 
       {/* Phone scanning a QRIS code */}
