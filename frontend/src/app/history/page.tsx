@@ -25,7 +25,11 @@ export default function HistoryPage() {
 
   useEffect(() => {
     const userId = window.localStorage.getItem("liber:userId");
-    if (userId) getOrderHistory(userId).then(setEntries);
+    if (userId) {
+      getOrderHistory(userId)
+        .then(setEntries)
+        .catch(() => setEntries([]));
+    }
   }, []);
 
   return (
