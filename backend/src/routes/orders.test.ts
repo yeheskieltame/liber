@@ -1,6 +1,7 @@
 // backend/src/routes/orders.test.ts
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
+import { Account, Asset, Keypair, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { getPool } from "../db/pool.js";
 import { migrate } from "../db/migrate.js";
 import { insertOrder } from "../orders/repository.js";
@@ -11,6 +12,25 @@ import type { OrderState } from "../orders/state-machine.js";
 before(async () => {
   await migrate();
 });
+
+// The approve route now verifies the signed XDR actually pays the treasury
+// before submitting it, so tests that exercise that route need a real signed
+// payment transaction rather than a fake string. TREASURY_PUBLIC_KEY isn't
+// among the shared env vars for this test run, so it's set here.
+const treasuryKeypair = Keypair.random();
+process.env.TREASURY_PUBLIC_KEY = treasuryKeypair.publicKey();
+
+function buildSignedPaymentXdr(params: { destination: string; amount: string; assetCode?: string; assetIssuer?: string }): string {
+  const source = Keypair.random();
+  const sourceAccount = new Account(source.publicKey(), "100");
+  const asset = new Asset(params.assetCode ?? "USDC", params.assetIssuer ?? process.env.USDC_ISSUER!);
+  const tx = new TransactionBuilder(sourceAccount, { fee: "10000", networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE! })
+    .addOperation(Operation.payment({ destination: params.destination, asset, amount: params.amount }))
+    .setTimeout(30)
+    .build();
+  tx.sign(source);
+  return tx.toXDR();
+}
 
 async function insertTestUser(): Promise<string> {
   const pool = getPool();
@@ -201,10 +221,12 @@ test("POST /orders/:id/approve submits the signed XDR and transitions to awaitin
     submitStellarTx: async () => ({ hash: "FAKE_STELLAR_TX_HASH" }),
   });
 
+  const signedXdr = buildSignedPaymentXdr({ destination: treasuryKeypair.publicKey(), amount: "2.02" });
+
   const res = await app.request(`/orders/${order.id}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ signedXdr: "SIGNED_XDR" }),
+    body: JSON.stringify({ signedXdr }),
   });
 
   assert.equal(res.status, 200);
@@ -238,10 +260,12 @@ test("POST /orders/:id/approve surfaces payment submission failures as a 502 and
     },
   });
 
+  const signedXdr = buildSignedPaymentXdr({ destination: treasuryKeypair.publicKey(), amount: "2.02" });
+
   const res = await app.request(`/orders/${order.id}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ signedXdr: "SIGNED_XDR" }),
+    body: JSON.stringify({ signedXdr }),
   });
 
   assert.equal(res.status, 502);
@@ -288,6 +312,79 @@ test("POST /orders/:id/approve returns 409 when order is not in quoted state", a
   assert.equal(rows[0].state, "awaiting_settlement");
 });
 
+test("POST /orders/:id/approve returns 400 and marks the order failed when the signed XDR pays the wrong destination", async () => {
+  const userId = await insertTestUser();
+  const order = await insertOrder({
+    userId,
+    qrContent: "irrelevant-for-this-test",
+    merchantName: "Warung Kopi Asa",
+    merchantCity: "Jakarta",
+    amountIdr: "32000",
+    amountUsdc: "2.02",
+    rateIdrPerUsdc: "16000",
+    quoteExpiresAt: new Date(Date.now() + 30_000),
+    fromAccountAddress: "GFROMACCOUNT...",
+  });
+
+  const app = createOrdersRoute({
+    submitStellarTx: async () => ({ hash: "SHOULD_NOT_BE_CALLED" }),
+  });
+
+  const wrongDestination = Keypair.random().publicKey();
+  const signedXdr = buildSignedPaymentXdr({ destination: wrongDestination, amount: "2.02" });
+
+  const res = await app.request(`/orders/${order.id}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signedXdr }),
+  });
+
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(body.state, "failed");
+
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT state, failure_reason FROM orders WHERE id = $1", [order.id]);
+  assert.equal(rows[0].state, "failed");
+  assert.match(rows[0].failure_reason, /does not match the quoted payment/);
+});
+
+test("POST /orders/:id/approve returns 400 and marks the order failed when the signed XDR pays the wrong amount", async () => {
+  const userId = await insertTestUser();
+  const order = await insertOrder({
+    userId,
+    qrContent: "irrelevant-for-this-test",
+    merchantName: "Warung Kopi Asa",
+    merchantCity: "Jakarta",
+    amountIdr: "32000",
+    amountUsdc: "2.02",
+    rateIdrPerUsdc: "16000",
+    quoteExpiresAt: new Date(Date.now() + 30_000),
+    fromAccountAddress: "GFROMACCOUNT...",
+  });
+
+  const app = createOrdersRoute({
+    submitStellarTx: async () => ({ hash: "SHOULD_NOT_BE_CALLED" }),
+  });
+
+  const signedXdr = buildSignedPaymentXdr({ destination: treasuryKeypair.publicKey(), amount: "9.99" });
+
+  const res = await app.request(`/orders/${order.id}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signedXdr }),
+  });
+
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(body.state, "failed");
+
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT state, failure_reason FROM orders WHERE id = $1", [order.id]);
+  assert.equal(rows[0].state, "failed");
+  assert.match(rows[0].failure_reason, /does not match the quoted payment/);
+});
+
 test("POST /orders/:id/settle transitions awaiting_settlement to completed when the admin secret matches", async () => {
   process.env.ADMIN_SECRET = "test-admin-secret";
   const userId = await insertTestUser();
@@ -324,6 +421,36 @@ test("POST /orders/:id/settle returns 403 when the admin secret is missing or wr
   const pool = getPool();
   const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [orderId]);
   assert.equal(rows[0].state, "awaiting_settlement");
+});
+
+test("POST /orders/:id/settle returns 403 when ADMIN_SECRET is not configured, even with a header sent", async () => {
+  const previousAdminSecret = process.env.ADMIN_SECRET;
+  delete process.env.ADMIN_SECRET;
+
+  try {
+    const userId = await insertTestUser();
+    const orderId = await insertOrderWithState(userId, "awaiting_settlement");
+
+    const app = createOrdersRoute();
+    const res = await app.request(`/orders/${orderId}/settle`, {
+      method: "POST",
+      headers: { "x-admin-secret": "anything" },
+    });
+
+    assert.equal(res.status, 403);
+
+    const pool = getPool();
+    const { rows } = await pool.query("SELECT state FROM orders WHERE id = $1", [orderId]);
+    assert.equal(rows[0].state, "awaiting_settlement");
+  } finally {
+    // Restore for any later tests in this file that rely on ADMIN_SECRET
+    // being configured.
+    if (previousAdminSecret === undefined) {
+      delete process.env.ADMIN_SECRET;
+    } else {
+      process.env.ADMIN_SECRET = previousAdminSecret;
+    }
+  }
 });
 
 test("POST /orders/:id/settle returns 409 when the order is not awaiting_settlement", async () => {

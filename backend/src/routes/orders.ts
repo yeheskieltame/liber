@@ -1,11 +1,40 @@
 // backend/src/routes/orders.ts
 import { Hono } from "hono";
+import Big from "big.js";
+import { TransactionBuilder } from "@stellar/stellar-sdk";
 import { parseQRIS } from "../qris/parser.js";
 import { getQuote as defaultGetQuote } from "../quote/quote.js";
 import { transition, InvalidTransitionError } from "../orders/state-machine.js";
 import { insertOrder, getOrder, updateOrderState } from "../orders/repository.js";
+import type { OrderRow } from "../orders/repository.js";
 import { buildPaymentTx as defaultBuildPaymentTx, submitStellarTx as defaultSubmitStellarTx } from "../stellar/account.js";
 import { getPool } from "../db/pool.js";
+
+// Verifies a signed payment XDR actually pays what was quoted before we
+// submit it to Horizon and (on success) tell the operator to hand over their
+// own real IDR to the merchant. Returns null when the transaction matches,
+// or a human-readable mismatch reason otherwise.
+function validateSignedPaymentTx(signedXdr: string, order: OrderRow): string | null {
+  const mismatchReason =
+    "signed transaction does not match the quoted payment (destination/asset/amount mismatch)";
+
+  let tx;
+  try {
+    tx = TransactionBuilder.fromXDR(signedXdr, process.env.STELLAR_NETWORK_PASSPHRASE!);
+  } catch {
+    return mismatchReason;
+  }
+
+  if (tx.operations.length !== 1) return mismatchReason;
+
+  const [op] = tx.operations;
+  if (op.type !== "payment") return mismatchReason;
+  if (op.destination !== process.env.TREASURY_PUBLIC_KEY) return mismatchReason;
+  if (op.asset.code !== "USDC" || op.asset.issuer !== process.env.USDC_ISSUER) return mismatchReason;
+  if (order.amount_usdc == null || !new Big(op.amount).eq(new Big(order.amount_usdc))) return mismatchReason;
+
+  return null;
+}
 
 export interface OrdersRouteDeps {
   getQuote: typeof defaultGetQuote;
@@ -74,11 +103,21 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
       throw err;
     }
 
-    const { unsignedXdr } = await buildPaymentTx({
-      fromAccountAddress: user.stellar_public_key,
-      destinationPublicKey: process.env.TREASURY_PUBLIC_KEY!,
-      amountUsdc: quote.amountUsdc,
-    });
+    let unsignedXdr;
+    try {
+      ({ unsignedXdr } = await buildPaymentTx({
+        fromAccountAddress: user.stellar_public_key,
+        destinationPublicKey: process.env.TREASURY_PUBLIC_KEY!,
+        amountUsdc: quote.amountUsdc,
+      }));
+    } catch (err) {
+      // Don't leave the order stuck in "quoted" forever: the
+      // orders_one_in_flight_per_user unique index means a permanently
+      // in-flight order locks this user out of ever creating another one.
+      const failedState = transition("quoted", "failure");
+      await updateOrderState(order.id, failedState, { failure_reason: (err as Error).message });
+      return c.json({ state: failedState, error: (err as Error).message }, 502);
+    }
 
     return c.json(
       {
@@ -112,6 +151,13 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
     }
     await updateOrderState(id, approvedState);
 
+    const mismatchReason = validateSignedPaymentTx(signedXdr, order);
+    if (mismatchReason) {
+      const failedState = transition(approvedState, "failure");
+      await updateOrderState(id, failedState, { failure_reason: mismatchReason });
+      return c.json({ state: failedState, error: mismatchReason }, 400);
+    }
+
     try {
       const { hash } = await submitStellarTx(signedXdr);
       const settlementState = transition(approvedState, "payment_submitted");
@@ -128,7 +174,7 @@ export function createOrdersRoute(deps: Partial<OrdersRouteDeps> = {}): Hono {
     // ponytail: plain string compare, not constant-time. Fine for a
     // single-operator hackathon demo; upgrade to a timing-safe compare if
     // this admin route is ever exposed beyond the operator's own tooling.
-    if (c.req.header("x-admin-secret") !== process.env.ADMIN_SECRET) {
+    if (!process.env.ADMIN_SECRET || c.req.header("x-admin-secret") !== process.env.ADMIN_SECRET) {
       return c.json({ error: "forbidden" }, 403);
     }
 
