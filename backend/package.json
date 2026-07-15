@@ -12,7 +12,6 @@
     "migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
-    "@allbridge/bridge-core-sdk": "^3.32.0",
     "@hono/node-server": "^1.13.0",
     "@stellar/stellar-sdk": "^13.0.0",
     "big.js": "^6.2.1",
