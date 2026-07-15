@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { createOrder } from "./api.js";
+import { createOrder, getOrder } from "./api.js";
 
 test("createOrder posts to /orders and returns the parsed quote", async () => {
   const fakeFetch = mock.fn(async (url: string, init: RequestInit) => {
@@ -57,4 +57,45 @@ test("createOrder includes amountIdr as query parameter for static QRIS", async 
 
   assert.equal(result.orderId, "o2");
   assert.equal(result.unsignedBridgeXdr, "FAKE_XDR_2");
+});
+
+test("createOrder surfaces the backend's error message on a non-OK response", async () => {
+  const fakeFetch = mock.fn(async () => {
+    return new Response(JSON.stringify({ error: "an order is already in progress for this user" }), {
+      status: 409,
+    });
+  });
+
+  await assert.rejects(
+    createOrder({ userId: "u1", qrContent: "0002..." }, fakeFetch as typeof fetch, "http://backend.test"),
+    (err: Error) => {
+      assert.equal(err.message, "an order is already in progress for this user");
+      return true;
+    }
+  );
+});
+
+test("createOrder falls back to a generic message when the error body isn't JSON", async () => {
+  const fakeFetch = mock.fn(async () => {
+    return new Response("Internal Server Error", { status: 500 });
+  });
+
+  await assert.rejects(
+    createOrder({ userId: "u1", qrContent: "0002..." }, fakeFetch as typeof fetch, "http://backend.test"),
+    (err: Error) => {
+      assert.equal(err.message, "/orders failed: 500");
+      return true;
+    }
+  );
+});
+
+test("getOrder surfaces the backend's error message on a non-OK response", async () => {
+  const fakeFetch = mock.fn(async () => {
+    return new Response(JSON.stringify({ error: "order not found" }), { status: 404 });
+  });
+
+  await assert.rejects(getOrder("o1", fakeFetch as typeof fetch, "http://backend.test"), (err: Error) => {
+    assert.equal(err.message, "order not found");
+    return true;
+  });
 });

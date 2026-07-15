@@ -24,6 +24,10 @@ export default function PayPage() {
         const input = window.prompt(`Nominal untuk ${parsed.merchantName} (Rp)`);
         if (!input) return;
         amountIdr = Number(input);
+        if (!Number.isFinite(amountIdr) || amountIdr <= 0) {
+          setError("Nominal tidak valid. Masukkan angka lebih dari 0.");
+          return;
+        }
       }
 
       const result = await createOrder({ userId, qrContent, amountIdr });

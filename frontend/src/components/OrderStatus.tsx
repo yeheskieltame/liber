@@ -26,13 +26,19 @@ export function OrderStatus({ orderId }: { orderId: string }) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const result = await getOrder(orderId);
-      setStatus(result);
-      if (result.state === "completed" || result.state === "failed") {
-        clearInterval(interval);
+    async function poll() {
+      try {
+        const result = await getOrder(orderId);
+        setStatus(result);
+        if (result.state === "completed" || result.state === "failed") {
+          clearInterval(interval);
+        }
+      } catch (err) {
+        console.error("poll failed, will retry", err);
       }
-    }, 3000);
+    }
+    poll();
+    const interval = setInterval(poll, 3000);
     return () => clearInterval(interval);
   }, [orderId]);
 

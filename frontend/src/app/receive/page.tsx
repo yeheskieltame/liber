@@ -11,14 +11,18 @@ export default function ReceivePage() {
   const [address, setAddress] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getOrCreateWallet(new LocalStorageWalletStorage()).then(async (wallet) => {
-      setAddress(wallet.publicKey);
-      setQrDataUrl(await QRCode.toDataURL(wallet.publicKey));
-    });
+    getOrCreateWallet(new LocalStorageWalletStorage())
+      .then(async (wallet) => {
+        setAddress(wallet.publicKey);
+        setQrDataUrl(await QRCode.toDataURL(wallet.publicKey));
+      })
+      .catch(() => setError("Tidak bisa memuat alamat dompet. Coba muat ulang halaman ini."));
   }, []);
 
+  if (error) return <p className="mt-8 text-center text-sm text-rose">{error}</p>;
   if (!address) return <p className="mt-8 text-center text-sm text-ink/60">Memuat alamat...</p>;
 
   return (

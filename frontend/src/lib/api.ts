@@ -34,13 +34,21 @@ function baseUrl(override?: string): string {
   return override ?? process.env.NEXT_PUBLIC_BACKEND_URL!;
 }
 
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  const message = await res
+    .json()
+    .then((body) => body.error)
+    .catch(() => null);
+  return message ?? fallback;
+}
+
 async function postJson<T>(path: string, body: unknown, fetchImpl: typeof fetch, base: string): Promise<T> {
   const res = await fetchImpl(`${base}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+  if (!res.ok) throw new Error(await errorMessage(res, `${path} failed: ${res.status}`));
   return res.json() as Promise<T>;
 }
 
@@ -85,7 +93,7 @@ export async function getOrder(
   base = baseUrl()
 ): Promise<OrderStatus> {
   const res = await fetchImpl(`${base}/orders/${orderId}`);
-  if (!res.ok) throw new Error(`getOrder failed: ${res.status}`);
+  if (!res.ok) throw new Error(await errorMessage(res, `getOrder failed: ${res.status}`));
   return res.json();
 }
 
@@ -95,7 +103,7 @@ export async function getBalance(
   base = baseUrl()
 ): Promise<{ usdcBalance: string; idrEstimate: string }> {
   const res = await fetchImpl(`${base}/users/${userId}/balance`);
-  if (!res.ok) throw new Error(`getBalance failed: ${res.status}`);
+  if (!res.ok) throw new Error(await errorMessage(res, `getBalance failed: ${res.status}`));
   return res.json();
 }
 
@@ -116,7 +124,7 @@ export async function getOrderHistory(
   base = baseUrl()
 ): Promise<HistoryEntry[]> {
   const res = await fetchImpl(`${base}/users/${userId}/orders`);
-  if (!res.ok) throw new Error(`getOrderHistory failed: ${res.status}`);
+  if (!res.ok) throw new Error(await errorMessage(res, `getOrderHistory failed: ${res.status}`));
   const body = (await res.json()) as { orders: HistoryEntry[] };
   return body.orders;
 }
