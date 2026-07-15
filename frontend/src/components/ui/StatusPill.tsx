@@ -1,15 +1,11 @@
 const STYLES: Record<string, string> = {
-  scanned: "bg-ink/5 text-ink/60",
-  quoted: "bg-ink/5 text-ink/60",
-  approved: "bg-gold/15 text-gold-deep",
-  awaiting_settlement: "bg-gold/15 text-gold-deep",
-  completed: "bg-emerald/15 text-emerald-deep",
-  failed: "bg-rose/15 text-rose",
+  scan: "bg-ink/5 text-ink/60",
+  topup: "bg-emerald/15 text-emerald-deep",
 };
 
 export function StatusPill({ state, label }: { state: string; label: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${STYLES[state] ?? STYLES.scanned}`}>
+    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${STYLES[state] ?? STYLES.scan}`}>
       {label}
     </span>
   );
