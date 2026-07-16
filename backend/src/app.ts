@@ -9,18 +9,26 @@ import { topupsRoute } from "./routes/topups.js";
 
 const LOCALHOST_FALLBACK = "http://localhost:3000";
 
-export function parseFrontendOrigins(raw: string | undefined): string[] {
-  const origins = (raw ?? "")
+function splitAndCleanOrigins(raw: string | undefined): string[] {
+  return (raw ?? "")
     .split(",")
     .map((entry) => entry.trim().replace(/\/$/, ""))
     .filter(Boolean);
+}
+
+export function parseFrontendOrigins(raw: string | undefined): string[] {
+  const origins = splitAndCleanOrigins(raw);
   return origins.length > 0 ? origins : [LOCALHOST_FALLBACK];
+}
+
+export function didFallBackToLocalhost(raw: string | undefined): boolean {
+  return splitAndCleanOrigins(raw).length === 0;
 }
 
 export function createApp() {
   const app = new Hono();
   const origins = parseFrontendOrigins(process.env.FRONTEND_ORIGINS);
-  if (origins.length === 1 && origins[0] === LOCALHOST_FALLBACK && process.env.FRONTEND_ORIGINS !== LOCALHOST_FALLBACK) {
+  if (didFallBackToLocalhost(process.env.FRONTEND_ORIGINS)) {
     console.warn(
       `[app] FRONTEND_ORIGINS was empty or unset; falling back to ${LOCALHOST_FALLBACK}. Set FRONTEND_ORIGINS explicitly in production.`
     );
