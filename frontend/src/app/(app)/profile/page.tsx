@@ -8,7 +8,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { QrScanner } from "@/components/QrScanner";
-import { getActiveWallet, signActiveWallet } from "@/lib/wallet/activeWallet";
+import { getActiveWallet, signActiveWallet, type ActiveWallet } from "@/lib/wallet/activeWallet";
 import { buildTopUpTx } from "@/lib/wallet/topup";
 import { saveKoloAddress, logTopup } from "@/lib/api";
 
@@ -18,6 +18,7 @@ const KOLO_ADDRESS_KEY = "liber:koloAddress";
 
 export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<ActiveWallet | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [copied, setCopied] = useState(false);
@@ -33,9 +34,10 @@ export default function ProfilePage() {
   useEffect(() => {
     setUserId(window.localStorage.getItem(USER_ID_KEY));
     setKoloAddress(window.localStorage.getItem(KOLO_ADDRESS_KEY));
-    getActiveWallet().then(async (wallet) => {
-      setAddress(wallet.publicKey);
-      setQrDataUrl(await QRCode.toDataURL(wallet.publicKey));
+    getActiveWallet().then(async (activeWallet) => {
+      setWallet(activeWallet);
+      setAddress(activeWallet.publicKey);
+      setQrDataUrl(await QRCode.toDataURL(activeWallet.publicKey));
     });
   }, []);
 
@@ -64,11 +66,10 @@ export default function ProfilePage() {
       setError("Amount too small. Minimum is 0.01 USDC.");
       return;
     }
-    if (!userId || !koloAddress) return;
+    if (!userId || !koloAddress || !wallet) return;
 
     setSubmitting(true);
     try {
-      const wallet = await getActiveWallet();
       const horizonUrl = process.env.NEXT_PUBLIC_HORIZON_URL ?? "https://horizon.stellar.org";
       const server = new Horizon.Server(horizonUrl);
       const accountResponse = await server.loadAccount(wallet.publicKey);
@@ -208,7 +209,7 @@ export default function ProfilePage() {
             inputMode="decimal"
             className="w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald"
           />
-          <Button onClick={handleTopUp} disabled={submitting || !amountInput}>
+          <Button onClick={handleTopUp} disabled={submitting || !amountInput || !wallet}>
             {submitting ? "Sending..." : "Top Up Kolo"}
           </Button>
         </Card>
