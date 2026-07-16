@@ -10,7 +10,6 @@ import { ShieldIcon, DocumentIcon } from "@/components/icons";
 import { importWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 import { getActiveWallet, getWalletMode, disconnectAndSwitchToLocal } from "@/lib/wallet/activeWallet";
 import { getUserIdByKey } from "@/lib/api";
-import { GoogleDriveBackupCard } from "@/components/GoogleDriveBackupCard";
 
 const USER_ID_KEY = "liber:userId";
 
@@ -180,49 +179,6 @@ export default function SettingsPage() {
             </Button>
             {importError && <p className="text-sm text-rose">{importError}</p>}
             {importSuccess && !importError && <p className="text-sm text-emerald">Wallet restored on this device.</p>}
-
-            <div className="h-px bg-ink/10" />
-
-            <div>
-              <p className="text-sm font-semibold text-ink">Back up to Google Drive</p>
-              <p className="mt-1 text-xs text-ink/50">
-                Encrypt your secret key with a passphrase you choose and store it in your own Google Drive. Google
-                never sees the passphrase or the key itself.
-              </p>
-            </div>
-            {walletSecretKey && <GoogleDriveBackupCard mode="backup" secretKey={walletSecretKey} />}
-
-            <div className="h-px bg-ink/10" />
-
-            <div>
-              <p className="text-sm font-semibold text-ink">Restore from Google Drive</p>
-              <p className="mt-1 text-xs text-ink/50">Already backed up a Liber wallet to Google Drive? Restore it here.</p>
-            </div>
-            <GoogleDriveBackupCard
-              mode="restore"
-              onRestoreSuccess={async (restoredSecretKey) => {
-                setImportError(null);
-                setImportSuccess(false);
-                try {
-                  const publicKey = Keypair.fromSecret(restoredSecretKey).publicKey();
-                  const match = await getUserIdByKey(publicKey);
-                  const wallet = await importWallet(new LocalStorageWalletStorage(), restoredSecretKey);
-                  if (match) {
-                    window.localStorage.setItem(USER_ID_KEY, match.userId);
-                  } else {
-                    window.localStorage.removeItem(USER_ID_KEY);
-                    setImportError(
-                      "This key has never been used with Liber. Restored the wallet, but there's no account history to recover."
-                    );
-                  }
-                  setAddress(wallet.publicKey);
-                  setWalletSecretKey(wallet.secretKey);
-                  setImportSuccess(true);
-                } catch {
-                  setImportError("Couldn't reach Liber's servers. Try again.");
-                }
-              }}
-            />
           </>
         )}
       </Card>
