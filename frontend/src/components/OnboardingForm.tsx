@@ -39,21 +39,33 @@ export function OnboardingForm() {
   async function handleContinueWithGoogle() {
     setError(null);
     setSubmitting(true);
+
+    let token: string;
+    let hasBackup: boolean;
     try {
-      const token = await requestAccessToken(GOOGLE_CLIENT_ID);
-      const hasBackup = await checkExistingBackup(token);
-      setAccessToken(token);
-      if (hasBackup) {
-        setStep("restore-passphrase");
-      } else {
-        const secretKey = await createLocalAccount();
-        setNewSecretKey(secretKey);
-        setStep("backup-passphrase");
-      }
+      token = await requestAccessToken(GOOGLE_CLIENT_ID);
+      hasBackup = await checkExistingBackup(token);
     } catch (err) {
+      setSubmitting(false);
       if (!(err instanceof GoogleSignInCancelledError)) {
         setError("Couldn't reach Google Drive. Try again, or continue without Google below.");
       }
+      return;
+    }
+
+    setAccessToken(token);
+    if (hasBackup) {
+      setStep("restore-passphrase");
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const secretKey = await createLocalAccount();
+      setNewSecretKey(secretKey);
+      setStep("backup-passphrase");
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setSubmitting(false);
     }
