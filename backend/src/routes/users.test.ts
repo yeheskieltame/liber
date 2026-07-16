@@ -92,6 +92,31 @@ test("POST /users returns a friendly 503 (not a raw Horizon error) when the fund
   assert.equal(rows.length, 0);
 });
 
+test("POST /users returns a friendly 503 when Horizon reports a transient tx_bad_seq failure", async () => {
+  const stellarPublicKey = Keypair.random().publicKey();
+
+  const app = createUsersRoute({
+    accountExistsOnStellar: async () => false,
+    buildOnboardingTx: async () => {
+      const err = new Error("Request failed with status code 400") as Error & {
+        response?: { data?: { extras?: { result_codes: { transaction: string } } } };
+      };
+      err.response = { data: { extras: { result_codes: { transaction: "tx_bad_seq" } } } };
+      throw err;
+    },
+  });
+
+  const res = await app.request("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stellarPublicKey }),
+  });
+
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.equal(body.error, "New wallet signups are temporarily unavailable. Please try again shortly.");
+});
+
 test("POST /users returns the existing user without re-funding when a row already exists for that key", async () => {
   const stellarPublicKey = Keypair.random().publicKey();
   await getPool().query(`INSERT INTO users (stellar_public_key) VALUES ($1)`, [stellarPublicKey]);

@@ -8,6 +8,7 @@ import {
   submitStellarTx as defaultSubmitStellarTx,
   accountExistsOnStellar as defaultAccountExistsOnStellar,
   InsufficientFundingBalanceError,
+  withFundingLock,
 } from "../stellar/account.js";
 
 export interface UsersRouteDeps {
@@ -46,14 +47,16 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
 
       const alreadyFunded = await accountExistsOnStellar(body.stellarPublicKey);
       if (!alreadyFunded) {
-        const { signedXdr: fundingXdr } = await buildOnboardingTx({
-          fundingSecret: process.env.FUNDING_SECRET_KEY!,
-          newAccountPublicKey: body.stellarPublicKey,
-          startingBalanceXlm: STARTING_BALANCE_XLM,
-        });
         // The funding tx is signed only by the backend's own funding key (the source
         // account), so it can be submitted immediately without any user signature.
-        await submitStellarTx(fundingXdr);
+        await withFundingLock(async () => {
+          const { signedXdr: fundingXdr } = await buildOnboardingTx({
+            fundingSecret: process.env.FUNDING_SECRET_KEY!,
+            newAccountPublicKey: body.stellarPublicKey,
+            startingBalanceXlm: STARTING_BALANCE_XLM,
+          });
+          await submitStellarTx(fundingXdr);
+        });
       }
 
       const { unsignedXdr: unsignedTrustlineXdr } = await buildTrustlineTx({
@@ -68,6 +71,14 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
     } catch (err) {
       if (err instanceof InsufficientFundingBalanceError) {
         console.error("[users] " + err.message);
+        return c.json({ error: "New wallet signups are temporarily unavailable. Please try again shortly." }, 503);
+      }
+      const resultCodes = (err as { response?: { data?: { extras?: { result_codes?: { transaction?: string; operations?: string[] } } } } })
+        ?.response?.data?.extras?.result_codes;
+      const isTransientStellarFailure =
+        resultCodes?.transaction === "tx_bad_seq" || (resultCodes?.operations ?? []).includes("op_underfunded");
+      if (isTransientStellarFailure) {
+        console.error("[users] transient Stellar submission failure", JSON.stringify(resultCodes));
         return c.json({ error: "New wallet signups are temporarily unavailable. Please try again shortly." }, 503);
       }
       console.error("[users] " + (err as Error).message);
