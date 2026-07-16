@@ -30,7 +30,7 @@ function fromBase64(b64: string): Uint8Array {
 async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
   const baseKey = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(passphrase),
+    new TextEncoder().encode(passphrase) as BufferSource,
     "PBKDF2",
     false,
     ["deriveKey"]
@@ -51,7 +51,7 @@ export async function encrypt(plaintext: string, passphrase: string): Promise<En
   const ciphertextBuffer = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv as BufferSource },
     key,
-    new TextEncoder().encode(plaintext)
+    new TextEncoder().encode(plaintext) as BufferSource
   );
   return {
     salt: toBase64(salt),
