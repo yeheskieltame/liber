@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Keypair } from "@stellar/stellar-sdk";
 import { getOrCreateWallet, importWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 import { signXdr } from "@/lib/wallet/keypair";
 import { createUser, confirmTrustline, getUserIdByKey } from "@/lib/api";
@@ -92,20 +93,32 @@ export function OnboardingForm() {
     if (!passphrase || !accessToken) return;
     setError(null);
     setSubmitting(true);
+
+    let secretKey: string;
     try {
-      const secretKey = await restoreFromGoogleDrive(accessToken, passphrase);
-      const wallet = await importWallet(new LocalStorageWalletStorage(), secretKey);
-      const match = await getUserIdByKey(wallet.publicKey);
-      if (match) {
-        window.localStorage.setItem(USER_ID_KEY, match.userId);
-      }
-      router.push("/home");
+      secretKey = await restoreFromGoogleDrive(accessToken, passphrase);
     } catch (err) {
+      setSubmitting(false);
       if (err instanceof DecryptionError) {
         setError("That passphrase doesn't match this backup.");
       } else {
         setError("Couldn't restore this backup. Try again.");
       }
+      return;
+    }
+
+    try {
+      const publicKey = Keypair.fromSecret(secretKey).publicKey();
+      const match = await getUserIdByKey(publicKey);
+      await importWallet(new LocalStorageWalletStorage(), secretKey);
+      if (match) {
+        window.localStorage.setItem(USER_ID_KEY, match.userId);
+      } else {
+        window.localStorage.removeItem(USER_ID_KEY);
+      }
+      router.push("/home");
+    } catch {
+      setError("Couldn't reach Liber's servers. Try again.");
     } finally {
       setSubmitting(false);
     }

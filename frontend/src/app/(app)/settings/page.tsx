@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Keypair } from "@stellar/stellar-sdk";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -42,19 +43,33 @@ export default function SettingsPage() {
     setImportError(null);
     setImportSuccess(false);
     setImporting(true);
+
+    let publicKey: string;
     try {
+      publicKey = Keypair.fromSecret(importInput.trim()).publicKey();
+    } catch {
+      setImportError("That doesn't look like a valid Stellar secret key. It should start with S.");
+      setImporting(false);
+      return;
+    }
+
+    try {
+      const match = await getUserIdByKey(publicKey);
       const wallet = await importWallet(new LocalStorageWalletStorage(), importInput.trim());
-      const match = await getUserIdByKey(wallet.publicKey);
-      if (!match) {
-        setImportError("This key has never been used with Liber. Restored the wallet, but there's no account history to recover.");
-      } else {
+      if (match) {
         window.localStorage.setItem(USER_ID_KEY, match.userId);
+      } else {
+        window.localStorage.removeItem(USER_ID_KEY);
+        setImportError(
+          "This key has never been used with Liber. Restored the wallet, but there's no account history to recover."
+        );
       }
       setAddress(wallet.publicKey);
+      setWalletSecretKey(wallet.secretKey);
       setImportInput("");
       setImportSuccess(true);
     } catch {
-      setImportError("That doesn't look like a valid Stellar secret key. It should start with S.");
+      setImportError("Couldn't reach Liber's servers. Try again.");
     } finally {
       setImporting(false);
     }
@@ -144,20 +159,22 @@ export default function SettingsPage() {
             setImportError(null);
             setImportSuccess(false);
             try {
+              const publicKey = Keypair.fromSecret(restoredSecretKey).publicKey();
+              const match = await getUserIdByKey(publicKey);
               const wallet = await importWallet(new LocalStorageWalletStorage(), restoredSecretKey);
-              const match = await getUserIdByKey(wallet.publicKey);
-              if (!match) {
+              if (match) {
+                window.localStorage.setItem(USER_ID_KEY, match.userId);
+              } else {
+                window.localStorage.removeItem(USER_ID_KEY);
                 setImportError(
                   "This key has never been used with Liber. Restored the wallet, but there's no account history to recover."
                 );
-              } else {
-                window.localStorage.setItem(USER_ID_KEY, match.userId);
               }
               setAddress(wallet.publicKey);
               setWalletSecretKey(wallet.secretKey);
               setImportSuccess(true);
             } catch {
-              setImportError("Something went wrong restoring this wallet.");
+              setImportError("Couldn't reach Liber's servers. Try again.");
             }
           }}
         />
