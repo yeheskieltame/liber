@@ -26,6 +26,7 @@ export default function ProfilePage() {
 
   const [koloAddress, setKoloAddress] = useState<string | null>(null);
   const [koloMemo, setKoloMemo] = useState<string | null>(null);
+  const [editingKolo, setEditingKolo] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [addressInput, setAddressInput] = useState("");
   const [memoInput, setMemoInput] = useState("");
@@ -60,8 +61,16 @@ export default function ProfilePage() {
     window.localStorage.setItem(KOLO_MEMO_KEY, memoValue);
     setKoloAddress(addressValue);
     setKoloMemo(memoValue);
+    setEditingKolo(false);
     if (userId)
       saveKoloAddress(userId, addressValue, memoValue).catch((err) => console.error("failed to save Kolo address", err));
+  }
+
+  function handleStartEditKolo() {
+    setError(null);
+    setAddressInput(koloAddress ?? "");
+    setMemoInput(koloMemo ?? "");
+    setEditingKolo(true);
   }
 
   async function handleTopUp() {
@@ -181,7 +190,7 @@ export default function ProfilePage() {
         </Card>
       )}
 
-      {!koloAddress ? (
+      {!koloAddress || editingKolo ? (
         <Card className="mt-3 flex flex-col gap-4">
           <p className="text-sm text-ink/60">
             Connect your Kolo Stellar address and the numeric memo from your Kolo account. USDC sent there can be
@@ -216,13 +225,29 @@ export default function ProfilePage() {
               <Button variant="ghost" onClick={() => setScanning(true)}>
                 Scan Kolo QR
               </Button>
+              {koloAddress && (
+                <Button variant="ghost" onClick={() => setEditingKolo(false)}>
+                  Cancel
+                </Button>
+              )}
             </>
           )}
         </Card>
       ) : (
         <Card className="mt-3 flex flex-col gap-4">
-          <p className="break-all font-mono text-xs text-ink/50">{koloAddress}</p>
-          <p className="font-mono text-xs text-ink/50">Memo: {koloMemo}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <p className="break-all font-mono text-xs text-ink/50">{koloAddress}</p>
+              <p className="font-mono text-xs text-ink/50">Memo: {koloMemo}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleStartEditKolo}
+              className="shrink-0 text-xs font-semibold text-emerald underline underline-offset-4"
+            >
+              Edit
+            </button>
+          </div>
           <input
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}

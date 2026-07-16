@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Keypair } from "@stellar/stellar-sdk";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
@@ -12,8 +13,17 @@ import { getActiveWallet, getWalletMode, disconnectAndSwitchToLocal } from "@/li
 import { getUserIdByKey } from "@/lib/api";
 
 const USER_ID_KEY = "liber:userId";
+const KOLO_ADDRESS_KEY = "liber:koloAddress";
+const KOLO_MEMO_KEY = "liber:koloMemo";
+
+function clearSession() {
+  window.localStorage.removeItem(USER_ID_KEY);
+  window.localStorage.removeItem(KOLO_ADDRESS_KEY);
+  window.localStorage.removeItem(KOLO_MEMO_KEY);
+}
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [address, setAddress] = useState<string | null>(null);
   const [walletSecretKey, setWalletSecretKey] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -51,17 +61,17 @@ export default function SettingsPage() {
     setDisconnecting(true);
     try {
       await disconnectAndSwitchToLocal();
-      const wallet = await getActiveWallet();
-      setAddress(wallet.publicKey);
-      setIsExternalWallet(false);
-      if (wallet.mode === "local") {
-        setWalletSecretKey(wallet.secretKey);
-      }
+      clearSession();
+      router.replace("/");
     } catch {
       setDisconnectError("Couldn't disconnect. Try again.");
-    } finally {
       setDisconnecting(false);
     }
+  }
+
+  function handleLogOut() {
+    clearSession();
+    router.replace("/");
   }
 
   async function handleImport() {
@@ -116,9 +126,8 @@ export default function SettingsPage() {
               </p>
             </div>
             <p className="rounded-2xl bg-rose/10 px-4 py-3 text-xs text-rose">
-              Disconnecting only changes what this device shows - it never touches your connected wallet's funds.
-              But if this device has no local Liber wallet backed up, disconnecting will show a brand new, empty one
-              afterward. To use this wallet again, reconnect it from onboarding.
+              Disconnecting never touches your connected wallet's funds - it just signs this device out. You'll be
+              sent back to the start screen, and can reconnect the same wallet any time from onboarding.
             </p>
             <Button variant="ghost" onClick={handleDisconnect} disabled={disconnecting}>
               {disconnecting ? "Disconnecting..." : "Disconnect Wallet"}
@@ -179,6 +188,16 @@ export default function SettingsPage() {
             </Button>
             {importError && <p className="text-sm text-rose">{importError}</p>}
             {importSuccess && !importError && <p className="text-sm text-emerald">Wallet restored on this device.</p>}
+
+            <div className="h-px bg-ink/10" />
+
+            <p className="text-xs text-ink/50">
+              Signs this device out and sends you back to the start screen. Your wallet stays on this device - log
+              back in any time to pick up right where you left off.
+            </p>
+            <Button variant="ghost" onClick={handleLogOut}>
+              Log Out
+            </Button>
           </>
         )}
       </Card>
