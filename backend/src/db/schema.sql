@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stellar_public_key TEXT NOT NULL UNIQUE,
   kolo_stellar_address TEXT,
+  kolo_memo TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -40,6 +41,10 @@ DROP TABLE IF EXISTS orders;
 -- CREATE TABLE IF NOT EXISTS is a no-op there. This ALTER is idempotent
 -- additive insurance to make sure the column lands on redeploy too.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kolo_stellar_address TEXT;
+
+-- Kolo requires a numeric memo (MEMO_ID) on the deposit transaction to
+-- attribute it to the right account, alongside the shared kolo_stellar_address.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS kolo_memo TEXT;
 
 -- Cleanup carried over from the treasury-float pivot's schema.sql, which got
 -- dropped when the Kolo-routing pivot replaced this file wholesale. These

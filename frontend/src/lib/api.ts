@@ -88,10 +88,11 @@ export async function getQuote(
 export async function saveKoloAddress(
   userId: string,
   koloStellarAddress: string,
+  koloMemo?: string,
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
-): Promise<{ koloStellarAddress: string }> {
-  return postJson(`/users/${userId}/kolo-address`, { koloStellarAddress }, fetchImpl, base);
+): Promise<{ koloStellarAddress: string; koloMemo: string | null }> {
+  return postJson(`/users/${userId}/kolo-address`, { koloStellarAddress, koloMemo }, fetchImpl, base);
 }
 
 export async function logScan(

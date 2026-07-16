@@ -30,15 +30,16 @@ test("getQuote surfaces the backend's error message on a non-OK response", async
   });
 });
 
-test("saveKoloAddress posts the address and returns it", async () => {
+test("saveKoloAddress posts the address and memo, and returns them", async () => {
   const fakeFetch = mock.fn(async (url: string, init: RequestInit) => {
     assert.equal(url, "http://backend.test/users/u1/kolo-address");
-    assert.deepEqual(JSON.parse(init.body as string), { koloStellarAddress: "GKOLO..." });
-    return new Response(JSON.stringify({ koloStellarAddress: "GKOLO..." }), { status: 200 });
+    assert.deepEqual(JSON.parse(init.body as string), { koloStellarAddress: "GKOLO...", koloMemo: "123456" });
+    return new Response(JSON.stringify({ koloStellarAddress: "GKOLO...", koloMemo: "123456" }), { status: 200 });
   });
 
-  const result = await saveKoloAddress("u1", "GKOLO...", fakeFetch as typeof fetch, "http://backend.test");
+  const result = await saveKoloAddress("u1", "GKOLO...", "123456", fakeFetch as typeof fetch, "http://backend.test");
   assert.equal(result.koloStellarAddress, "GKOLO...");
+  assert.equal(result.koloMemo, "123456");
 });
 
 test("logScan posts the scan details", async () => {

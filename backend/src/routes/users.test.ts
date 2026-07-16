@@ -228,6 +228,46 @@ test("POST /users/:id/kolo-address saves a valid Stellar address", async () => {
   assert.equal(check[0].kolo_stellar_address, koloAddress);
 });
 
+test("POST /users/:id/kolo-address saves a numeric koloMemo alongside the address", async () => {
+  const pool = getPool();
+  const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    `GKOLOUSER${Math.random().toString(36).slice(2)}`,
+  ]);
+  const userId = rows[0].id;
+  const koloAddress = Keypair.random().publicKey();
+
+  const app = createUsersRoute();
+  const res = await app.request(`/users/${userId}/kolo-address`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ koloStellarAddress: koloAddress, koloMemo: "123456" }),
+  });
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.koloMemo, "123456");
+
+  const { rows: check } = await pool.query(`SELECT kolo_memo FROM users WHERE id = $1`, [userId]);
+  assert.equal(check[0].kolo_memo, "123456");
+});
+
+test("POST /users/:id/kolo-address rejects a non-numeric koloMemo", async () => {
+  const pool = getPool();
+  const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    `GKOLOUSER${Math.random().toString(36).slice(2)}`,
+  ]);
+  const userId = rows[0].id;
+
+  const app = createUsersRoute();
+  const res = await app.request(`/users/${userId}/kolo-address`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ koloStellarAddress: Keypair.random().publicKey(), koloMemo: "not-a-number" }),
+  });
+
+  assert.equal(res.status, 400);
+});
+
 test("POST /users/:id/kolo-address rejects an invalid address", async () => {
   const pool = getPool();
   const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [

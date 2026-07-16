@@ -15,6 +15,7 @@ import { saveKoloAddress, logTopup } from "@/lib/api";
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const USER_ID_KEY = "liber:userId";
 const KOLO_ADDRESS_KEY = "liber:koloAddress";
+const KOLO_MEMO_KEY = "liber:koloMemo";
 
 export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -24,8 +25,10 @@ export default function ProfilePage() {
   const [copied, setCopied] = useState(false);
 
   const [koloAddress, setKoloAddress] = useState<string | null>(null);
+  const [koloMemo, setKoloMemo] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [addressInput, setAddressInput] = useState("");
+  const [memoInput, setMemoInput] = useState("");
   const [amountInput, setAmountInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +37,7 @@ export default function ProfilePage() {
   useEffect(() => {
     setUserId(window.localStorage.getItem(USER_ID_KEY));
     setKoloAddress(window.localStorage.getItem(KOLO_ADDRESS_KEY));
+    setKoloMemo(window.localStorage.getItem(KOLO_MEMO_KEY));
     getActiveWallet().then(async (activeWallet) => {
       setWallet(activeWallet);
       setAddress(activeWallet.publicKey);
@@ -41,16 +45,23 @@ export default function ProfilePage() {
     });
   }, []);
 
-  function handleConnect(value: string) {
+  function handleConnect(addressValue: string, memoValue: string) {
     setError(null);
-    if (!StrKey.isValidEd25519PublicKey(value)) {
+    if (!StrKey.isValidEd25519PublicKey(addressValue)) {
       setError("Invalid Kolo address. It should be a Stellar address starting with G.");
       return;
     }
+    if (!/^\d+$/.test(memoValue)) {
+      setError("Invalid Kolo memo. It should be the numeric memo Kolo gave you for your account.");
+      return;
+    }
 
-    window.localStorage.setItem(KOLO_ADDRESS_KEY, value);
-    setKoloAddress(value);
-    if (userId) saveKoloAddress(userId, value).catch((err) => console.error("failed to save Kolo address", err));
+    window.localStorage.setItem(KOLO_ADDRESS_KEY, addressValue);
+    window.localStorage.setItem(KOLO_MEMO_KEY, memoValue);
+    setKoloAddress(addressValue);
+    setKoloMemo(memoValue);
+    if (userId)
+      saveKoloAddress(userId, addressValue, memoValue).catch((err) => console.error("failed to save Kolo address", err));
   }
 
   async function handleTopUp() {
@@ -79,6 +90,7 @@ export default function ProfilePage() {
         destinationPublicKey: koloAddress,
         amountUsdc: amountUsdcRounded,
         networkPassphrase: NETWORK_PASSPHRASE,
+        memoId: koloMemo ?? undefined,
       });
       const signedXdr = await signActiveWallet(wallet, unsignedXdr, NETWORK_PASSPHRASE);
       const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
@@ -172,13 +184,14 @@ export default function ProfilePage() {
       {!koloAddress ? (
         <Card className="mt-3 flex flex-col gap-4">
           <p className="text-sm text-ink/60">
-            Connect your Kolo Stellar address. USDC sent there can be spent immediately through your Kolo card linked to GoPay or DANA.
+            Connect your Kolo Stellar address and the numeric memo from your Kolo account. USDC sent there can be
+            spent immediately through your Kolo card linked to GoPay or DANA.
           </p>
           {scanning ? (
             <QrScanner
               onScan={(text) => {
                 setScanning(false);
-                handleConnect(text);
+                setAddressInput(text);
               }}
               onError={setError}
             />
@@ -190,7 +203,14 @@ export default function ProfilePage() {
                 placeholder="Kolo Stellar address (G...)"
                 className="w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald"
               />
-              <Button onClick={() => handleConnect(addressInput)} disabled={!addressInput}>
+              <input
+                value={memoInput}
+                onChange={(e) => setMemoInput(e.target.value)}
+                placeholder="Kolo memo (numeric)"
+                inputMode="numeric"
+                className="w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink placeholder:text-ink/40 outline-none ring-1 ring-transparent focus:ring-emerald"
+              />
+              <Button onClick={() => handleConnect(addressInput, memoInput)} disabled={!addressInput || !memoInput}>
                 Connect
               </Button>
               <Button variant="ghost" onClick={() => setScanning(true)}>
@@ -202,6 +222,7 @@ export default function ProfilePage() {
       ) : (
         <Card className="mt-3 flex flex-col gap-4">
           <p className="break-all font-mono text-xs text-ink/50">{koloAddress}</p>
+          <p className="font-mono text-xs text-ink/50">Memo: {koloMemo}</p>
           <input
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}

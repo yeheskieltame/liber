@@ -21,6 +21,13 @@ const defaultDeps: UsersRouteDeps = {
   getNativeBalance: defaultGetNativeBalance,
 };
 
+const MAX_MEMO_ID = 18446744073709551615n;
+
+export function isValidMemoId(value: string): boolean {
+  if (!/^\d+$/.test(value)) return false;
+  return BigInt(value) <= MAX_MEMO_ID;
+}
+
 export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
   const { buildTrustlineTx, submitStellarTx, getNativeBalance } = { ...defaultDeps, ...deps };
   const usersRoute = new Hono();
@@ -85,18 +92,21 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
   });
 
   usersRoute.post("/users/:id/kolo-address", async (c) => {
-    const { koloStellarAddress } = await c.req.json<{ koloStellarAddress: string }>();
+    const { koloStellarAddress, koloMemo } = await c.req.json<{ koloStellarAddress: string; koloMemo?: string }>();
     if (!StrKey.isValidEd25519PublicKey(koloStellarAddress)) {
       return c.json({ error: "koloStellarAddress must be a valid Stellar public key" }, 400);
     }
+    if (koloMemo !== undefined && !isValidMemoId(koloMemo)) {
+      return c.json({ error: "koloMemo must be a numeric string between 0 and 18446744073709551615" }, 400);
+    }
 
     const { rows } = await getPool().query(
-      `UPDATE users SET kolo_stellar_address = $2 WHERE id = $1 RETURNING id`,
-      [c.req.param("id"), koloStellarAddress]
+      `UPDATE users SET kolo_stellar_address = $2, kolo_memo = $3 WHERE id = $1 RETURNING id`,
+      [c.req.param("id"), koloStellarAddress, koloMemo ?? null]
     );
     if (!rows[0]) return c.json({ error: "user not found" }, 404);
 
-    return c.json({ koloStellarAddress });
+    return c.json({ koloStellarAddress, koloMemo: koloMemo ?? null });
   });
 
   usersRoute.get("/users/by-key/:stellarPublicKey", async (c) => {
