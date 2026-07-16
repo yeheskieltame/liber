@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { Keypair } from "@stellar/stellar-sdk";
 import { getOrCreateWallet, importWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
-import { signXdr } from "@/lib/wallet/keypair";
 import { createUser, confirmTrustline, getUserIdByKey } from "@/lib/api";
 import { requestAccessToken, GoogleSignInCancelledError, GoogleSignInFailedError } from "@/lib/backup/googleDrive";
 import { checkExistingBackup, restoreFromGoogleDrive, backupToGoogleDrive } from "@/lib/backup/driveBackup";
 import { DecryptionError } from "@/lib/backup/crypto";
+import { connectExternalWallet } from "@/lib/wallet/externalWallet";
+import { setExternalWalletMode, signActiveWallet, type ActiveWallet } from "@/lib/wallet/activeWallet";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
@@ -29,22 +30,26 @@ export function OnboardingForm() {
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [newSecretKey, setNewSecretKey] = useState<string | null>(null);
-  const [pendingAddress, setPendingAddress] = useState<string | null>(null);
+  const [pendingWallet, setPendingWallet] = useState<ActiveWallet | null>(null);
   const [pendingQrDataUrl, setPendingQrDataUrl] = useState<string | null>(null);
 
-  /** Returns the secret key once the account is created, or null if it's still waiting on the user's deposit. */
-  async function tryCreateAccount(): Promise<string | null> {
-    const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
+  /** Returns true once the account is fully created/activated; false if it's still waiting on a deposit. */
+  async function tryCreateAccount(wallet: ActiveWallet): Promise<boolean> {
     const result = await createUser({ stellarPublicKey: wallet.publicKey });
     if (result.status === "awaiting_funding") {
-      setPendingAddress(wallet.publicKey);
+      setPendingWallet(wallet);
       setPendingQrDataUrl(await QRCode.toDataURL(wallet.publicKey));
-      return null;
+      return false;
     }
-    const signedXdr = signXdr(wallet.secretKey, result.unsignedTrustlineXdr, NETWORK_PASSPHRASE);
+    const signedXdr = await signActiveWallet(wallet, result.unsignedTrustlineXdr, NETWORK_PASSPHRASE);
     await confirmTrustline(result.userId, signedXdr);
     window.localStorage.setItem(USER_ID_KEY, result.userId);
-    return wallet.secretKey;
+    return true;
+  }
+
+  async function createLocalWallet(): Promise<ActiveWallet> {
+    const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
+    return { mode: "local", publicKey: wallet.publicKey, secretKey: wallet.secretKey };
   }
 
   async function handleContinueWithGoogle() {
@@ -76,12 +81,13 @@ export function OnboardingForm() {
     }
 
     try {
-      const secretKey = await tryCreateAccount();
-      if (secretKey === null) {
-        setStep("awaiting-funding");
-      } else {
-        setNewSecretKey(secretKey);
+      const wallet = await createLocalWallet();
+      const created = await tryCreateAccount(wallet);
+      if (created && wallet.mode === "local") {
+        setNewSecretKey(wallet.secretKey);
         setStep("backup-passphrase");
+      } else if (!created) {
+        setStep("awaiting-funding");
       }
     } catch (err) {
       setError((err as Error).message);
@@ -94,11 +100,32 @@ export function OnboardingForm() {
     setError(null);
     setSubmitting(true);
     try {
-      const secretKey = await tryCreateAccount();
-      if (secretKey === null) {
-        setStep("awaiting-funding");
-      } else {
+      const wallet = await createLocalWallet();
+      const created = await tryCreateAccount(wallet);
+      if (created) {
         router.push("/home");
+      } else {
+        setStep("awaiting-funding");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleConnectWallet() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const publicKey = await connectExternalWallet();
+      setExternalWalletMode();
+      const wallet: ActiveWallet = { mode: "external", publicKey };
+      const created = await tryCreateAccount(wallet);
+      if (created) {
+        router.push("/home");
+      } else {
+        setStep("awaiting-funding");
       }
     } catch (err) {
       setError((err as Error).message);
@@ -108,14 +135,17 @@ export function OnboardingForm() {
   }
 
   async function handleCheckFunding() {
+    if (!pendingWallet) return;
     setError(null);
     setSubmitting(true);
     try {
-      const secretKey = await tryCreateAccount();
-      if (secretKey === null) {
+      const created = await tryCreateAccount(pendingWallet);
+      if (!created) {
         setError("Still waiting for your deposit to arrive. This can take a minute or two.");
-      } else if (accessToken) {
-        setNewSecretKey(secretKey);
+        return;
+      }
+      if (pendingWallet.mode === "local" && accessToken) {
+        setNewSecretKey(pendingWallet.secretKey);
         setStep("backup-passphrase");
       } else {
         router.push("/home");
@@ -196,8 +226,10 @@ export function OnboardingForm() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={pendingQrDataUrl} alt="Your Stellar address" width={160} height={160} />
           )}
-          {pendingAddress && (
-            <p className="break-all rounded-2xl bg-paper px-4 py-3 font-mono text-xs text-ink/70">{pendingAddress}</p>
+          {pendingWallet && (
+            <p className="break-all rounded-2xl bg-paper px-4 py-3 font-mono text-xs text-ink/70">
+              {pendingWallet.publicKey}
+            </p>
           )}
         </Card>
         {error && <p className="text-sm text-rose">{error}</p>}
@@ -268,7 +300,7 @@ export function OnboardingForm() {
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-2 text-center">
         <p className="text-sm text-ink/60">
-          Continue with Google to restore an existing wallet, or create a new one instantly.
+          Continue with Google or connect an existing wallet to restore an account, or create a new one instantly.
         </p>
       </Card>
 
@@ -276,6 +308,9 @@ export function OnboardingForm() {
 
       <Button onClick={handleContinueWithGoogle} disabled={submitting}>
         {submitting ? "Checking..." : "Continue with Google"}
+      </Button>
+      <Button variant="secondary" onClick={handleConnectWallet} disabled={submitting}>
+        {submitting ? "Connecting..." : "Connect Wallet"}
       </Button>
       <Button variant="ghost" onClick={handleContinueWithoutGoogle} disabled={submitting}>
         Continue without Google
