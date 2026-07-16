@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { getQuote, saveKoloAddress, logScan, logTopup, getHistory } from "./api.js";
+import { createUser, getQuote, saveKoloAddress, logScan, logTopup, getHistory } from "./api.js";
 
 test("getQuote posts the IDR amount and returns the parsed quote", async () => {
   const fakeFetch = mock.fn(async (url: string, init: RequestInit) => {
@@ -107,4 +107,22 @@ test("getHistory surfaces the backend's error message on a non-OK response", asy
     assert.equal(err.message, "user not found");
     return true;
   });
+});
+
+test("createUser returns status: awaiting_funding on a 202 without treating it as an error", async () => {
+  const fakeFetch = mock.fn(async () => new Response(JSON.stringify({ status: "awaiting_funding" }), { status: 202 }));
+
+  const result = await createUser({ stellarPublicKey: "GTEST" }, fakeFetch as typeof fetch, "http://backend.test");
+
+  assert.deepEqual(result, { status: "awaiting_funding" });
+});
+
+test("createUser returns status: created with the userId and trustline xdr on success", async () => {
+  const fakeFetch = mock.fn(async () =>
+    new Response(JSON.stringify({ userId: "u1", unsignedTrustlineXdr: "XDR123" }), { status: 201 })
+  );
+
+  const result = await createUser({ stellarPublicKey: "GTEST" }, fakeFetch as typeof fetch, "http://backend.test");
+
+  assert.deepEqual(result, { status: "created", userId: "u1", unsignedTrustlineXdr: "XDR123" });
 });

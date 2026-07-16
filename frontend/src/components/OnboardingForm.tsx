@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import QRCode from "qrcode";
 import { Keypair } from "@stellar/stellar-sdk";
 import { getOrCreateWallet, importWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 import { signXdr } from "@/lib/wallet/keypair";
@@ -15,8 +16,9 @@ import { Button } from "@/components/ui/Button";
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const USER_ID_KEY = "liber:userId";
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
+const ACTIVATION_BALANCE_XLM = 2;
 
-type Step = "start" | "restore-passphrase" | "backup-passphrase";
+type Step = "start" | "awaiting-funding" | "restore-passphrase" | "backup-passphrase";
 
 export function OnboardingForm() {
   const router = useRouter();
@@ -27,13 +29,21 @@ export function OnboardingForm() {
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [newSecretKey, setNewSecretKey] = useState<string | null>(null);
+  const [pendingAddress, setPendingAddress] = useState<string | null>(null);
+  const [pendingQrDataUrl, setPendingQrDataUrl] = useState<string | null>(null);
 
-  async function createLocalAccount(): Promise<string> {
+  /** Returns the secret key once the account is created, or null if it's still waiting on the user's deposit. */
+  async function tryCreateAccount(): Promise<string | null> {
     const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
-    const { userId, unsignedTrustlineXdr } = await createUser({ stellarPublicKey: wallet.publicKey });
-    const signedXdr = signXdr(wallet.secretKey, unsignedTrustlineXdr, NETWORK_PASSPHRASE);
-    await confirmTrustline(userId, signedXdr);
-    window.localStorage.setItem(USER_ID_KEY, userId);
+    const result = await createUser({ stellarPublicKey: wallet.publicKey });
+    if (result.status === "awaiting_funding") {
+      setPendingAddress(wallet.publicKey);
+      setPendingQrDataUrl(await QRCode.toDataURL(wallet.publicKey));
+      return null;
+    }
+    const signedXdr = signXdr(wallet.secretKey, result.unsignedTrustlineXdr, NETWORK_PASSPHRASE);
+    await confirmTrustline(result.userId, signedXdr);
+    window.localStorage.setItem(USER_ID_KEY, result.userId);
     return wallet.secretKey;
   }
 
@@ -66,9 +76,13 @@ export function OnboardingForm() {
     }
 
     try {
-      const secretKey = await createLocalAccount();
-      setNewSecretKey(secretKey);
-      setStep("backup-passphrase");
+      const secretKey = await tryCreateAccount();
+      if (secretKey === null) {
+        setStep("awaiting-funding");
+      } else {
+        setNewSecretKey(secretKey);
+        setStep("backup-passphrase");
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -80,8 +94,32 @@ export function OnboardingForm() {
     setError(null);
     setSubmitting(true);
     try {
-      await createLocalAccount();
-      router.push("/home");
+      const secretKey = await tryCreateAccount();
+      if (secretKey === null) {
+        setStep("awaiting-funding");
+      } else {
+        router.push("/home");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCheckFunding() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const secretKey = await tryCreateAccount();
+      if (secretKey === null) {
+        setError("Still waiting for your deposit to arrive. This can take a minute or two.");
+      } else if (accessToken) {
+        setNewSecretKey(secretKey);
+        setStep("backup-passphrase");
+      } else {
+        router.push("/home");
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -144,6 +182,30 @@ export function OnboardingForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (step === "awaiting-funding") {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card className="flex flex-col items-center gap-4 text-center">
+          <p className="text-sm text-ink/60">
+            Send at least {ACTIVATION_BALANCE_XLM} XLM to this address to activate your wallet. You can send it from
+            any exchange or wallet you already use.
+          </p>
+          {pendingQrDataUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={pendingQrDataUrl} alt="Your Stellar address" width={160} height={160} />
+          )}
+          {pendingAddress && (
+            <p className="break-all rounded-2xl bg-paper px-4 py-3 font-mono text-xs text-ink/70">{pendingAddress}</p>
+          )}
+        </Card>
+        {error && <p className="text-sm text-rose">{error}</p>}
+        <Button onClick={handleCheckFunding} disabled={submitting}>
+          {submitting ? "Checking..." : "I've sent it - Check Again"}
+        </Button>
+      </div>
+    );
   }
 
   if (step === "restore-passphrase") {

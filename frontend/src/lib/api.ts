@@ -45,8 +45,16 @@ export async function createUser(
   req: CreateUserRequest,
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
-): Promise<{ userId: string; unsignedTrustlineXdr: string }> {
-  return postJson("/users", req, fetchImpl, base);
+): Promise<{ status: "created"; userId: string; unsignedTrustlineXdr: string } | { status: "awaiting_funding" }> {
+  const res = await fetchImpl(`${base}/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (res.status === 202) return { status: "awaiting_funding" };
+  if (!res.ok) throw new Error(await errorMessage(res, `/users failed: ${res.status}`));
+  const responseBody = (await res.json()) as { userId: string; unsignedTrustlineXdr: string };
+  return { status: "created", userId: responseBody.userId, unsignedTrustlineXdr: responseBody.unsignedTrustlineXdr };
 }
 
 export async function getUserIdByKey(
