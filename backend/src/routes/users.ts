@@ -3,32 +3,26 @@ import { Hono } from "hono";
 import { StrKey } from "@stellar/stellar-sdk";
 import { getPool } from "../db/pool.js";
 import {
-  buildOnboardingTx as defaultBuildOnboardingTx,
   buildTrustlineTx as defaultBuildTrustlineTx,
   submitStellarTx as defaultSubmitStellarTx,
-  accountExistsOnStellar as defaultAccountExistsOnStellar,
-  InsufficientFundingBalanceError,
-  withFundingLock,
+  getNativeBalance as defaultGetNativeBalance,
+  isActivated,
 } from "../stellar/account.js";
 
 export interface UsersRouteDeps {
-  buildOnboardingTx: typeof defaultBuildOnboardingTx;
   buildTrustlineTx: typeof defaultBuildTrustlineTx;
   submitStellarTx: typeof defaultSubmitStellarTx;
-  accountExistsOnStellar: typeof defaultAccountExistsOnStellar;
+  getNativeBalance: typeof defaultGetNativeBalance;
 }
 
 const defaultDeps: UsersRouteDeps = {
-  buildOnboardingTx: defaultBuildOnboardingTx,
   buildTrustlineTx: defaultBuildTrustlineTx,
   submitStellarTx: defaultSubmitStellarTx,
-  accountExistsOnStellar: defaultAccountExistsOnStellar,
+  getNativeBalance: defaultGetNativeBalance,
 };
 
-const STARTING_BALANCE_XLM = "2"; // base reserve (~1 XLM) + USDC trustline reserve (~0.5 XLM) + fee buffer for the user's own future transactions (e.g. Kolo top-ups)
-
 export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
-  const { buildOnboardingTx, buildTrustlineTx, submitStellarTx, accountExistsOnStellar } = { ...defaultDeps, ...deps };
+  const { buildTrustlineTx, submitStellarTx, getNativeBalance } = { ...defaultDeps, ...deps };
   const usersRoute = new Hono();
 
   usersRoute.post("/users", async (c) => {
@@ -45,18 +39,9 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
         return c.json({ userId: existing.rows[0].id, unsignedTrustlineXdr }, 200);
       }
 
-      const alreadyFunded = await accountExistsOnStellar(body.stellarPublicKey);
-      if (!alreadyFunded) {
-        // The funding tx is signed only by the backend's own funding key (the source
-        // account), so it can be submitted immediately without any user signature.
-        await withFundingLock(async () => {
-          const { signedXdr: fundingXdr } = await buildOnboardingTx({
-            fundingSecret: process.env.FUNDING_SECRET_KEY!,
-            newAccountPublicKey: body.stellarPublicKey,
-            startingBalanceXlm: STARTING_BALANCE_XLM,
-          });
-          await submitStellarTx(fundingXdr);
-        });
+      const nativeBalance = await getNativeBalance(body.stellarPublicKey);
+      if (!isActivated(nativeBalance)) {
+        return c.json({ status: "awaiting_funding" }, 202);
       }
 
       const { unsignedXdr: unsignedTrustlineXdr } = await buildTrustlineTx({
@@ -69,18 +54,6 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
 
       return c.json({ userId: rows[0].id, unsignedTrustlineXdr }, 201);
     } catch (err) {
-      if (err instanceof InsufficientFundingBalanceError) {
-        console.error("[users] " + err.message);
-        return c.json({ error: "New wallet signups are temporarily unavailable. Please try again shortly." }, 503);
-      }
-      const resultCodes = (err as { response?: { data?: { extras?: { result_codes?: { transaction?: string; operations?: string[] } } } } })
-        ?.response?.data?.extras?.result_codes;
-      const isTransientStellarFailure =
-        resultCodes?.transaction === "tx_bad_seq" || (resultCodes?.operations ?? []).includes("op_underfunded");
-      if (isTransientStellarFailure) {
-        console.error("[users] transient Stellar submission failure", JSON.stringify(resultCodes));
-        return c.json({ error: "New wallet signups are temporarily unavailable. Please try again shortly." }, 503);
-      }
       console.error("[users] " + (err as Error).message);
       return c.json({ error: (err as Error).message }, 502);
     }
