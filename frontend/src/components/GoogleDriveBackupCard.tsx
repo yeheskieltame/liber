@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { requestAccessToken, GoogleSignInCancelledError } from "@/lib/backup/googleDrive";
+import { requestAccessToken, GoogleSignInCancelledError, GoogleSignInFailedError } from "@/lib/backup/googleDrive";
 import { backupToGoogleDrive, restoreFromGoogleDrive } from "@/lib/backup/driveBackup";
 import { DecryptionError } from "@/lib/backup/crypto";
 
@@ -14,6 +14,7 @@ type Props =
 
 function describeError(err: unknown): string | null {
   if (err instanceof GoogleSignInCancelledError) return null;
+  if (err instanceof GoogleSignInFailedError) return "Google sign-in didn't complete. Please try again.";
   if (err instanceof DecryptionError) return "That passphrase doesn't match this backup.";
   const message = (err as Error).message;
   if (

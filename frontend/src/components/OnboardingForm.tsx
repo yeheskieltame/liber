@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { getOrCreateWallet, importWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
 import { signXdr } from "@/lib/wallet/keypair";
 import { createUser, confirmTrustline, getUserIdByKey } from "@/lib/api";
-import { requestAccessToken, GoogleSignInCancelledError } from "@/lib/backup/googleDrive";
+import { requestAccessToken, GoogleSignInCancelledError, GoogleSignInFailedError } from "@/lib/backup/googleDrive";
 import { checkExistingBackup, restoreFromGoogleDrive, backupToGoogleDrive } from "@/lib/backup/driveBackup";
 import { DecryptionError } from "@/lib/backup/crypto";
 import { Card } from "@/components/ui/Card";
@@ -47,7 +47,11 @@ export function OnboardingForm() {
       hasBackup = await checkExistingBackup(token);
     } catch (err) {
       setSubmitting(false);
-      if (!(err instanceof GoogleSignInCancelledError)) {
+      if (err instanceof GoogleSignInCancelledError) {
+        // silent - the user declined or closed the consent screen, not an error
+      } else if (err instanceof GoogleSignInFailedError) {
+        setError("Google sign-in didn't complete. Please try again.");
+      } else {
         setError("Couldn't reach Google Drive. Try again, or continue without Google below.");
       }
       return;

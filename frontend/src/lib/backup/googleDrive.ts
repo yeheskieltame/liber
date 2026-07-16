@@ -13,6 +13,7 @@ declare global {
             client_id: string;
             scope: string;
             callback: (response: { access_token?: string; error?: string }) => void;
+            error_callback?: (error: { type?: string; message?: string }) => void;
           }): { requestAccessToken: () => void };
         };
       };
@@ -24,6 +25,13 @@ export class GoogleSignInCancelledError extends Error {
   constructor() {
     super("Google sign-in was cancelled.");
     this.name = "GoogleSignInCancelledError";
+  }
+}
+
+export class GoogleSignInFailedError extends Error {
+  constructor(reason: string) {
+    super(`Google sign-in didn't complete (${reason}).`);
+    this.name = "GoogleSignInFailedError";
   }
 }
 
@@ -40,7 +48,10 @@ export function loadGoogleIdentityServices(): Promise<void> {
     script.src = GIS_SCRIPT_SRC;
     script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Google Identity Services"));
+    script.onerror = () => {
+      gisLoadPromise = null; // allow a future call to retry instead of replaying this same rejection forever
+      reject(new Error("Failed to load Google Identity Services"));
+    };
     document.head.appendChild(script);
   });
   return gisLoadPromise;
@@ -55,8 +66,20 @@ export async function requestAccessToken(clientId: string): Promise<string> {
       client_id: clientId,
       scope: DRIVE_SCOPE,
       callback: (response) => {
-        if (response.access_token) resolve(response.access_token);
-        else reject(new GoogleSignInCancelledError());
+        if (response.access_token) {
+          resolve(response.access_token);
+        } else if (response.error === "access_denied") {
+          reject(new GoogleSignInCancelledError());
+        } else {
+          reject(new GoogleSignInFailedError(response.error ?? "unknown_error"));
+        }
+      },
+      error_callback: (error) => {
+        if (error?.type === "popup_closed") {
+          reject(new GoogleSignInCancelledError());
+        } else {
+          reject(new GoogleSignInFailedError(error?.type ?? "popup_failed_to_open"));
+        }
       },
     });
     client.requestAccessToken();
