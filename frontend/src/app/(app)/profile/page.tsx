@@ -8,8 +8,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { QrScanner } from "@/components/QrScanner";
-import { getOrCreateWallet, LocalStorageWalletStorage } from "@/lib/wallet/storage";
-import { signXdr } from "@/lib/wallet/keypair";
+import { getActiveWallet, signActiveWallet } from "@/lib/wallet/activeWallet";
 import { buildTopUpTx } from "@/lib/wallet/topup";
 import { saveKoloAddress, logTopup } from "@/lib/api";
 
@@ -34,7 +33,7 @@ export default function ProfilePage() {
   useEffect(() => {
     setUserId(window.localStorage.getItem(USER_ID_KEY));
     setKoloAddress(window.localStorage.getItem(KOLO_ADDRESS_KEY));
-    getOrCreateWallet(new LocalStorageWalletStorage()).then(async (wallet) => {
+    getActiveWallet().then(async (wallet) => {
       setAddress(wallet.publicKey);
       setQrDataUrl(await QRCode.toDataURL(wallet.publicKey));
     });
@@ -69,7 +68,7 @@ export default function ProfilePage() {
 
     setSubmitting(true);
     try {
-      const wallet = await getOrCreateWallet(new LocalStorageWalletStorage());
+      const wallet = await getActiveWallet();
       const horizonUrl = process.env.NEXT_PUBLIC_HORIZON_URL ?? "https://horizon.stellar.org";
       const server = new Horizon.Server(horizonUrl);
       const accountResponse = await server.loadAccount(wallet.publicKey);
@@ -80,7 +79,7 @@ export default function ProfilePage() {
         amountUsdc: amountUsdcRounded,
         networkPassphrase: NETWORK_PASSPHRASE,
       });
-      const signedXdr = signXdr(wallet.secretKey, unsignedXdr, NETWORK_PASSPHRASE);
+      const signedXdr = await signActiveWallet(wallet, unsignedXdr, NETWORK_PASSPHRASE);
       const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
       const response = await server.submitTransaction(tx);
 
