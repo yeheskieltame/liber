@@ -28,6 +28,7 @@ export default function SettingsPage() {
 
   const [isExternalWallet, setIsExternalWallet] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   useEffect(() => {
     getActiveWallet().then((wallet) => {
@@ -47,6 +48,7 @@ export default function SettingsPage() {
   }
 
   async function handleDisconnect() {
+    setDisconnectError(null);
     setDisconnecting(true);
     try {
       await disconnectAndSwitchToLocal();
@@ -56,6 +58,8 @@ export default function SettingsPage() {
       if (wallet.mode === "local") {
         setWalletSecretKey(wallet.secretKey);
       }
+    } catch {
+      setDisconnectError("Couldn't disconnect. Try again.");
     } finally {
       setDisconnecting(false);
     }
@@ -112,9 +116,15 @@ export default function SettingsPage() {
                 and recovery are handled by that wallet, not by Liber.
               </p>
             </div>
+            <p className="rounded-2xl bg-rose/10 px-4 py-3 text-xs text-rose">
+              Disconnecting only changes what this device shows - it never touches your connected wallet's funds.
+              But if this device has no local Liber wallet backed up, disconnecting will show a brand new, empty one
+              afterward. To use this wallet again, reconnect it from onboarding.
+            </p>
             <Button variant="ghost" onClick={handleDisconnect} disabled={disconnecting}>
               {disconnecting ? "Disconnecting..." : "Disconnect Wallet"}
             </Button>
+            {disconnectError && <p className="text-sm text-rose">{disconnectError}</p>}
           </>
         ) : (
           <>
