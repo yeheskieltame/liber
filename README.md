@@ -65,7 +65,7 @@ Each app runs independently. Open two terminals.
 ```bash
 cd backend
 npm install
-cp .env.example .env   # fill in DATABASE_URL and FUNDING_SECRET_KEY
+cp .env.example .env   # fill in DATABASE_URL
 npm run migrate
 npm run dev
 ```

@@ -7,7 +7,6 @@ const REQUIRED_ENV_VARS = [
   "DATABASE_URL",
   "STELLAR_NETWORK_PASSPHRASE",
   "USDC_ISSUER",
-  "FUNDING_SECRET_KEY",
 ];
 
 const missingEnvVars = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
