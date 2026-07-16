@@ -6,6 +6,7 @@ import {
   buildOnboardingTx as defaultBuildOnboardingTx,
   buildTrustlineTx as defaultBuildTrustlineTx,
   submitStellarTx as defaultSubmitStellarTx,
+  accountExistsOnStellar as defaultAccountExistsOnStellar,
   InsufficientFundingBalanceError,
 } from "../stellar/account.js";
 
@@ -13,32 +14,47 @@ export interface UsersRouteDeps {
   buildOnboardingTx: typeof defaultBuildOnboardingTx;
   buildTrustlineTx: typeof defaultBuildTrustlineTx;
   submitStellarTx: typeof defaultSubmitStellarTx;
+  accountExistsOnStellar: typeof defaultAccountExistsOnStellar;
 }
 
 const defaultDeps: UsersRouteDeps = {
   buildOnboardingTx: defaultBuildOnboardingTx,
   buildTrustlineTx: defaultBuildTrustlineTx,
   submitStellarTx: defaultSubmitStellarTx,
+  accountExistsOnStellar: defaultAccountExistsOnStellar,
 };
 
 const STARTING_BALANCE_XLM = "2"; // base reserve (~1 XLM) + USDC trustline reserve (~0.5 XLM) + fee buffer for the user's own future transactions (e.g. Kolo top-ups)
 
 export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
-  const { buildOnboardingTx, buildTrustlineTx, submitStellarTx } = { ...defaultDeps, ...deps };
+  const { buildOnboardingTx, buildTrustlineTx, submitStellarTx, accountExistsOnStellar } = { ...defaultDeps, ...deps };
   const usersRoute = new Hono();
 
   usersRoute.post("/users", async (c) => {
     const body = await c.req.json<{ stellarPublicKey: string }>();
 
     try {
-      const { signedXdr: fundingXdr } = await buildOnboardingTx({
-        fundingSecret: process.env.FUNDING_SECRET_KEY!,
-        newAccountPublicKey: body.stellarPublicKey,
-        startingBalanceXlm: STARTING_BALANCE_XLM,
-      });
-      // The funding tx is signed only by the backend's own funding key (the source
-      // account), so it can be submitted immediately without any user signature.
-      await submitStellarTx(fundingXdr);
+      const existing = await getPool().query(`SELECT id FROM users WHERE stellar_public_key = $1`, [
+        body.stellarPublicKey,
+      ]);
+      if (existing.rows[0]) {
+        const { unsignedXdr: unsignedTrustlineXdr } = await buildTrustlineTx({
+          accountPublicKey: body.stellarPublicKey,
+        });
+        return c.json({ userId: existing.rows[0].id, unsignedTrustlineXdr }, 200);
+      }
+
+      const alreadyFunded = await accountExistsOnStellar(body.stellarPublicKey);
+      if (!alreadyFunded) {
+        const { signedXdr: fundingXdr } = await buildOnboardingTx({
+          fundingSecret: process.env.FUNDING_SECRET_KEY!,
+          newAccountPublicKey: body.stellarPublicKey,
+          startingBalanceXlm: STARTING_BALANCE_XLM,
+        });
+        // The funding tx is signed only by the backend's own funding key (the source
+        // account), so it can be submitted immediately without any user signature.
+        await submitStellarTx(fundingXdr);
+      }
 
       const { unsignedXdr: unsignedTrustlineXdr } = await buildTrustlineTx({
         accountPublicKey: body.stellarPublicKey,
@@ -54,6 +70,7 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
         console.error("[users] " + err.message);
         return c.json({ error: "New wallet signups are temporarily unavailable. Please try again shortly." }, 503);
       }
+      console.error("[users] " + (err as Error).message);
       return c.json({ error: (err as Error).message }, 502);
     }
   });

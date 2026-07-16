@@ -6,6 +6,7 @@ import {
   buildTrustlineTxFromAccount,
   assertSufficientFundingBalance,
   InsufficientFundingBalanceError,
+  accountExistsOnStellar,
 } from "./account.js";
 
 test("buildOnboardingTxFromAccount produces a signed createAccount operation with the right starting balance", () => {
@@ -54,4 +55,26 @@ test("assertSufficientFundingBalance throws InsufficientFundingBalanceError when
 
 test("assertSufficientFundingBalance does not throw when the funding account has enough", () => {
   assert.doesNotThrow(() => assertSufficientFundingBalance("5.00", "2"));
+});
+
+test("accountExistsOnStellar returns true when the account loads successfully", async () => {
+  const result = await accountExistsOnStellar("GTEST", async () => ({ id: "GTEST" }));
+  assert.equal(result, true);
+});
+
+test("accountExistsOnStellar returns false when the account lookup 404s", async () => {
+  const notFound = Object.assign(new Error("Not Found"), { response: { status: 404 } });
+  const result = await accountExistsOnStellar("GTEST", async () => {
+    throw notFound;
+  });
+  assert.equal(result, false);
+});
+
+test("accountExistsOnStellar rethrows non-404 errors", async () => {
+  await assert.rejects(
+    accountExistsOnStellar("GTEST", async () => {
+      throw new Error("network blip");
+    }),
+    /network blip/
+  );
 });

@@ -17,6 +17,19 @@ function server() {
   return new Horizon.Server(HORIZON_URL());
 }
 
+export async function accountExistsOnStellar(
+  publicKey: string,
+  fetchAccount: (pk: string) => Promise<unknown> = (pk) => server().loadAccount(pk)
+): Promise<boolean> {
+  try {
+    await fetchAccount(publicKey);
+    return true;
+  } catch (err) {
+    if ((err as { response?: { status?: number } })?.response?.status === 404) return false;
+    throw err;
+  }
+}
+
 export class InsufficientFundingBalanceError extends Error {
   constructor(availableXlm: string, requiredXlm: string) {
     super(

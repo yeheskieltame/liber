@@ -22,6 +22,7 @@ test("POST /users funds the account and returns an unsigned trustline tx", async
       submittedXdrs.push(signedXdr);
       return { hash: "FAKE_HASH" };
     },
+    accountExistsOnStellar: async () => false,
   });
 
   const res = await app.request("/users", {
@@ -48,6 +49,7 @@ test("POST /users returns a clear error response (not an unhandled crash) when a
     buildOnboardingTx: async () => {
       throw new Error("Horizon: could not build funding tx (simulated failure)");
     },
+    accountExistsOnStellar: async () => false,
   });
 
   const res = await app.request("/users", {
@@ -72,6 +74,7 @@ test("POST /users returns a friendly 503 (not a raw Horizon error) when the fund
     buildOnboardingTx: async () => {
       throw new InsufficientFundingBalanceError("2.00", "3.00");
     },
+    accountExistsOnStellar: async () => false,
   });
 
   const res = await app.request("/users", {
@@ -87,6 +90,91 @@ test("POST /users returns a friendly 503 (not a raw Horizon error) when the fund
   const pool = getPool();
   const { rows } = await pool.query(`SELECT id FROM users WHERE stellar_public_key = $1`, [stellarPublicKey]);
   assert.equal(rows.length, 0);
+});
+
+test("POST /users returns the existing user without re-funding when a row already exists for that key", async () => {
+  const stellarPublicKey = Keypair.random().publicKey();
+  await getPool().query(`INSERT INTO users (stellar_public_key) VALUES ($1)`, [stellarPublicKey]);
+
+  let fundingCalled = false;
+  const app = createUsersRoute({
+    buildOnboardingTx: async () => {
+      fundingCalled = true;
+      return { signedXdr: "SHOULD_NOT_BE_CALLED" };
+    },
+    buildTrustlineTx: async () => ({ unsignedXdr: "FAKE_TRUSTLINE_XDR" }),
+    accountExistsOnStellar: async () => true,
+  });
+
+  const res = await app.request("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stellarPublicKey }),
+  });
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.unsignedTrustlineXdr, "FAKE_TRUSTLINE_XDR");
+  assert.ok(body.userId);
+  assert.equal(fundingCalled, false);
+});
+
+test("POST /users skips funding but still creates the DB row when the Stellar account already exists but no user row does", async () => {
+  const stellarPublicKey = Keypair.random().publicKey();
+  let fundingCalled = false;
+  let submitCalled = false;
+
+  const app = createUsersRoute({
+    buildOnboardingTx: async () => {
+      fundingCalled = true;
+      return { signedXdr: "SHOULD_NOT_BE_CALLED" };
+    },
+    buildTrustlineTx: async () => ({ unsignedXdr: "FAKE_TRUSTLINE_XDR" }),
+    submitStellarTx: async (xdr: string) => {
+      submitCalled = true;
+      return { hash: "FAKE_HASH" };
+    },
+    accountExistsOnStellar: async () => true,
+  });
+
+  const res = await app.request("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stellarPublicKey }),
+  });
+
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.ok(body.userId);
+  assert.equal(fundingCalled, false);
+  assert.equal(submitCalled, false);
+
+  const { rows } = await getPool().query(`SELECT id FROM users WHERE stellar_public_key = $1`, [stellarPublicKey]);
+  assert.equal(rows.length, 1);
+});
+
+test("POST /users funds and creates normally when neither the row nor the account exists", async () => {
+  const stellarPublicKey = Keypair.random().publicKey();
+  let fundingCalled = false;
+
+  const app = createUsersRoute({
+    buildOnboardingTx: async () => {
+      fundingCalled = true;
+      return { signedXdr: "FAKE_FUNDING_XDR" };
+    },
+    buildTrustlineTx: async () => ({ unsignedXdr: "FAKE_TRUSTLINE_XDR" }),
+    submitStellarTx: async () => ({ hash: "FAKE_HASH" }),
+    accountExistsOnStellar: async () => false,
+  });
+
+  const res = await app.request("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stellarPublicKey }),
+  });
+
+  assert.equal(res.status, 201);
+  assert.equal(fundingCalled, true);
 });
 
 test("POST /users/:id/confirm-trustline submits the signed trustline tx and returns ready", async () => {
