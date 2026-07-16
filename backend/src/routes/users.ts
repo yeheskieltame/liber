@@ -76,9 +76,28 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
   });
 
   usersRoute.post("/users/:id/confirm-trustline", async (c) => {
-    const { signedXdr } = await c.req.json<{ signedXdr: string }>();
-    await submitStellarTx(signedXdr);
-    return c.json({ ready: true });
+    const userId = c.req.param("id");
+
+    let signedXdr: string;
+    try {
+      ({ signedXdr } = await c.req.json<{ signedXdr: string }>());
+    } catch {
+      return c.json({ error: "Request body must be valid JSON with a signedXdr field." }, 400);
+    }
+
+    const { rows } = await getPool().query(`SELECT id FROM users WHERE id = $1`, [userId]);
+    if (!rows[0]) return c.json({ error: "user not found" }, 404);
+
+    try {
+      await submitStellarTx(signedXdr);
+      return c.json({ ready: true });
+    } catch (err) {
+      console.error(
+        "[confirm-trustline] " + (err as Error).message,
+        JSON.stringify((err as { response?: { data?: unknown } })?.response?.data ?? {})
+      );
+      return c.json({ error: "Couldn't finish setting up your wallet. Please try again." }, 502);
+    }
   });
 
   usersRoute.post("/users/:id/kolo-address", async (c) => {

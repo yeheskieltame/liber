@@ -204,6 +204,62 @@ test("POST /users/:id/confirm-trustline submits the signed trustline tx and retu
   assert.deepEqual(submittedXdrs, ["SIGNED_TRUSTLINE_XDR"]);
 });
 
+test("POST /users/:id/confirm-trustline returns 404 for an unknown user id", async () => {
+  const app = createUsersRoute({
+    submitStellarTx: async () => ({ hash: "SHOULD_NOT_BE_CALLED" }),
+  });
+
+  const res = await app.request(`/users/${crypto.randomUUID()}/confirm-trustline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signedXdr: "irrelevant" }),
+  });
+
+  assert.equal(res.status, 404);
+});
+
+test("POST /users/:id/confirm-trustline returns a friendly 502 (not an unhandled crash) when submission fails", async () => {
+  const stellarPublicKey = Keypair.random().publicKey();
+  const inserted = await getPool().query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    stellarPublicKey,
+  ]);
+  const userId = inserted.rows[0].id;
+
+  const app = createUsersRoute({
+    submitStellarTx: async () => {
+      throw new Error("tx_bad_auth (simulated)");
+    },
+  });
+
+  const res = await app.request(`/users/${userId}/confirm-trustline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signedXdr: "irrelevant" }),
+  });
+
+  assert.equal(res.status, 502);
+  const body = await res.json();
+  assert.equal(body.error, "Couldn't finish setting up your wallet. Please try again.");
+});
+
+test("POST /users/:id/confirm-trustline returns 400 for a malformed body", async () => {
+  const stellarPublicKey = Keypair.random().publicKey();
+  const inserted = await getPool().query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
+    stellarPublicKey,
+  ]);
+  const userId = inserted.rows[0].id;
+
+  const app = createUsersRoute();
+
+  const res = await app.request(`/users/${userId}/confirm-trustline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "not json",
+  });
+
+  assert.equal(res.status, 400);
+});
+
 test("POST /users/:id/kolo-address saves a valid Stellar address", async () => {
   const pool = getPool();
   const { rows } = await pool.query(`INSERT INTO users (stellar_public_key) VALUES ($1) RETURNING id`, [
