@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { QrScanner } from "@/components/QrScanner";
 import { getActiveWallet, signActiveWallet, type ActiveWallet } from "@/lib/wallet/activeWallet";
 import { buildTopUpTx } from "@/lib/wallet/topup";
-import { saveKoloAddress, logTopup } from "@/lib/api";
+import { saveKoloAddress, logTopup, getUserIdByKey } from "@/lib/api";
 
 const NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const USER_ID_KEY = "liber:userId";
@@ -43,6 +43,22 @@ export default function ProfilePage() {
       setWallet(activeWallet);
       setAddress(activeWallet.publicKey);
       setQrDataUrl(await QRCode.toDataURL(activeWallet.publicKey));
+
+      // The backend keeps the Kolo address/memo even after this device's local
+      // cache is cleared (e.g. Log Out) - reconcile so it doesn't look "lost".
+      try {
+        const match = await getUserIdByKey(activeWallet.publicKey);
+        if (match?.koloStellarAddress) {
+          window.localStorage.setItem(KOLO_ADDRESS_KEY, match.koloStellarAddress);
+          setKoloAddress(match.koloStellarAddress);
+        }
+        if (match?.koloMemo) {
+          window.localStorage.setItem(KOLO_MEMO_KEY, match.koloMemo);
+          setKoloMemo(match.koloMemo);
+        }
+      } catch {
+        // Best-effort reconciliation; fall back to whatever's already cached locally.
+      }
     });
   }, []);
 

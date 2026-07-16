@@ -310,6 +310,28 @@ test("GET /users/by-key/:stellarPublicKey returns the matching userId", async ()
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.userId, userId);
+  assert.equal(body.koloStellarAddress, null);
+  assert.equal(body.koloMemo, null);
+});
+
+test("GET /users/by-key/:stellarPublicKey returns the saved Kolo address and memo", async () => {
+  const pool = getPool();
+  const stellarPublicKey = Keypair.random().publicKey();
+  const koloAddress = Keypair.random().publicKey();
+  const { rows } = await pool.query(
+    `INSERT INTO users (stellar_public_key, kolo_stellar_address, kolo_memo) VALUES ($1, $2, $3) RETURNING id`,
+    [stellarPublicKey, koloAddress, "555555"]
+  );
+  const userId = rows[0].id;
+
+  const app = createUsersRoute();
+  const res = await app.request(`/users/by-key/${stellarPublicKey}`);
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.userId, userId);
+  assert.equal(body.koloStellarAddress, koloAddress);
+  assert.equal(body.koloMemo, "555555");
 });
 
 test("GET /users/by-key/:stellarPublicKey returns 404 when no user has that key", async () => {

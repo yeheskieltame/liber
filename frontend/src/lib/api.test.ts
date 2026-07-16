@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { createUser, getQuote, saveKoloAddress, logScan, logTopup, getHistory } from "./api.js";
+import { createUser, getQuote, saveKoloAddress, logScan, logTopup, getHistory, getUserIdByKey } from "./api.js";
 
 test("getQuote posts the IDR amount and returns the parsed quote", async () => {
   const fakeFetch = mock.fn(async (url: string, init: RequestInit) => {
@@ -40,6 +40,24 @@ test("saveKoloAddress posts the address and memo, and returns them", async () =>
   const result = await saveKoloAddress("u1", "GKOLO...", "123456", fakeFetch as typeof fetch, "http://backend.test");
   assert.equal(result.koloStellarAddress, "GKOLO...");
   assert.equal(result.koloMemo, "123456");
+});
+
+test("getUserIdByKey returns the userId and any saved Kolo address/memo", async () => {
+  const fakeFetch = mock.fn(async (url: string) => {
+    assert.equal(url, "http://backend.test/users/by-key/GABC...");
+    return new Response(JSON.stringify({ userId: "u1", koloStellarAddress: "GKOLO...", koloMemo: "555555" }), {
+      status: 200,
+    });
+  });
+
+  const result = await getUserIdByKey("GABC...", fakeFetch as typeof fetch, "http://backend.test");
+  assert.deepEqual(result, { userId: "u1", koloStellarAddress: "GKOLO...", koloMemo: "555555" });
+});
+
+test("getUserIdByKey returns null on a 404", async () => {
+  const fakeFetch = mock.fn(async () => new Response(null, { status: 404 }));
+  const result = await getUserIdByKey("GABC...", fakeFetch as typeof fetch, "http://backend.test");
+  assert.equal(result, null);
 });
 
 test("logScan posts the scan details", async () => {

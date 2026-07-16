@@ -61,7 +61,7 @@ export async function getUserIdByKey(
   stellarPublicKey: string,
   fetchImpl: typeof fetch = fetch,
   base = baseUrl()
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; koloStellarAddress: string | null; koloMemo: string | null } | null> {
   const res = await fetchImpl(`${base}/users/by-key/${stellarPublicKey}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(await errorMessage(res, `getUserIdByKey failed: ${res.status}`));

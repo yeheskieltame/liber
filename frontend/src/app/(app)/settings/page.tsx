@@ -93,6 +93,8 @@ export default function SettingsPage() {
       const wallet = await importWallet(new LocalStorageWalletStorage(), importInput.trim());
       if (match) {
         window.localStorage.setItem(USER_ID_KEY, match.userId);
+        if (match.koloStellarAddress) window.localStorage.setItem(KOLO_ADDRESS_KEY, match.koloStellarAddress);
+        if (match.koloMemo) window.localStorage.setItem(KOLO_MEMO_KEY, match.koloMemo);
       } else {
         window.localStorage.removeItem(USER_ID_KEY);
         setImportError(
