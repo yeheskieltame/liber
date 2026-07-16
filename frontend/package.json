@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test $(find src -name '*.test.ts')"
+    "test": "node --no-experimental-webstorage --import tsx --test $(find src -name '*.test.ts')"
   },
   "dependencies": {
+    "@creit.tech/stellar-wallets-kit": "^2.5.0",
     "@stellar/stellar-sdk": "^16.0.1",
     "html5-qrcode": "^2.3.8",
     "next": "16.2.10",
