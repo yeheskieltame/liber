@@ -6,6 +6,7 @@ import {
   buildOnboardingTx as defaultBuildOnboardingTx,
   buildTrustlineTx as defaultBuildTrustlineTx,
   submitStellarTx as defaultSubmitStellarTx,
+  InsufficientFundingBalanceError,
 } from "../stellar/account.js";
 
 export interface UsersRouteDeps {
@@ -49,6 +50,10 @@ export function createUsersRoute(deps: Partial<UsersRouteDeps> = {}): Hono {
 
       return c.json({ userId: rows[0].id, unsignedTrustlineXdr }, 201);
     } catch (err) {
+      if (err instanceof InsufficientFundingBalanceError) {
+        console.error("[users] " + err.message);
+        return c.json({ error: "New wallet signups are temporarily unavailable. Please try again shortly." }, 503);
+      }
       return c.json({ error: (err as Error).message }, 502);
     }
   });

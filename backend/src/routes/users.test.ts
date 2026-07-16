@@ -5,6 +5,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import { getPool } from "../db/pool.js";
 import { migrate } from "../db/migrate.js";
 import { createUsersRoute } from "./users.js";
+import { InsufficientFundingBalanceError } from "../stellar/account.js";
 
 before(async () => {
   await migrate();
@@ -58,6 +59,30 @@ test("POST /users returns a clear error response (not an unhandled crash) when a
   assert.equal(res.status, 502);
   const body = await res.json();
   assert.match(body.error, /simulated failure/);
+
+  const pool = getPool();
+  const { rows } = await pool.query(`SELECT id FROM users WHERE stellar_public_key = $1`, [stellarPublicKey]);
+  assert.equal(rows.length, 0);
+});
+
+test("POST /users returns a friendly 503 (not a raw Horizon error) when the funding account balance is too low", async () => {
+  const stellarPublicKey = `GNEWUSER${Math.random().toString(36).slice(2)}`;
+
+  const app = createUsersRoute({
+    buildOnboardingTx: async () => {
+      throw new InsufficientFundingBalanceError("2.00", "3.00");
+    },
+  });
+
+  const res = await app.request("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stellarPublicKey }),
+  });
+
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.equal(body.error, "New wallet signups are temporarily unavailable. Please try again shortly.");
 
   const pool = getPool();
   const { rows } = await pool.query(`SELECT id FROM users WHERE stellar_public_key = $1`, [stellarPublicKey]);

@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Account, Keypair, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
-import { buildOnboardingTxFromAccount, buildTrustlineTxFromAccount } from "./account.js";
+import {
+  buildOnboardingTxFromAccount,
+  buildTrustlineTxFromAccount,
+  assertSufficientFundingBalance,
+  InsufficientFundingBalanceError,
+} from "./account.js";
 
 test("buildOnboardingTxFromAccount produces a signed createAccount operation with the right starting balance", () => {
   const funding = Keypair.random();
@@ -33,4 +38,20 @@ test("buildTrustlineTxFromAccount produces an unsigned changeTrust operation for
   assert.equal(op.line.code, "USDC");
   assert.equal(op.line.issuer, process.env.USDC_ISSUER);
   assert.equal(tx.signatures.length, 0);
+});
+
+test("assertSufficientFundingBalance throws InsufficientFundingBalanceError when the funding account can't cover the starting balance plus its own reserve", () => {
+  assert.throws(
+    () => assertSufficientFundingBalance("2.00", "2"),
+    (err: Error) => {
+      assert.ok(err instanceof InsufficientFundingBalanceError);
+      assert.match(err.message, /2\.00/);
+      assert.match(err.message, /operator needs to top up/i);
+      return true;
+    }
+  );
+});
+
+test("assertSufficientFundingBalance does not throw when the funding account has enough", () => {
+  assert.doesNotThrow(() => assertSufficientFundingBalance("5.00", "2"));
 });
